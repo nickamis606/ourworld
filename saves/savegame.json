@@ -1,11 +1,11 @@
 {
   "name": "Pixel",
   "needs": {
-    "hunger": 69.237303119991,
-    "happiness": 88.46398866999664,
-    "energy": 61.13493877498695,
-    "cleanliness": 48.83428638999469
+    "hunger": 0.0,
+    "happiness": 0.0,
+    "energy": 0.0,
+    "cleanliness": 0.0
   },
-  "location": "home",
+  "location": "park",
   "days_alive": 0
 }

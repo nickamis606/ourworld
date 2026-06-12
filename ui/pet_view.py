@@ -2,28 +2,28 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Dict
 
-from core.game_state import GameState           # ← changed
-from core.action_animator import ActionAnimator # ← changed
+from core.game_state import GameState
+from core.action_animator import ActionAnimator
+from core.snake_game import SnakeGame
+
 
 class PetView(ttk.Frame):
     def __init__(self, parent, game_state: GameState):
         super().__init__(parent)
         self.game_state = game_state
 
-        # Location display
+        # Current location display
         self.location_var = tk.StringVar()
         loc_frame = ttk.Frame(self)
         loc_frame.pack(fill="x", padx=10, pady=(5, 0))
         ttk.Label(loc_frame, text="Location:").pack(side="left")
         ttk.Label(loc_frame, textvariable=self.location_var, font=("TkDefaultFont", 11, "bold")).pack(side="left", padx=5)
 
-        # Location buttons
-        btn_loc_frame = ttk.Frame(self)
-        btn_loc_frame.pack(pady=5)
-        for loc_key in ["home", "park", "arcade"]:
-            btn = ttk.Button(btn_loc_frame, text=game_state.LOCATIONS[loc_key]["name"],
-                             command=lambda l=loc_key: self._change_location(l))
-            btn.pack(side="left", padx=3)
+        # Map button (main navigation)
+        map_frame = ttk.Frame(self)
+        map_frame.pack(pady=5)
+        self.map_btn = ttk.Button(map_frame, text="Map", width=10, command=self._open_map)
+        self.map_btn.pack()
 
         # Canvas
         self.canvas = tk.Canvas(self, width=320, height=240, highlightthickness=1)
@@ -64,7 +64,10 @@ class PetView(ttk.Frame):
             btn.pack(side="left", padx=4)
             self.buttons[action] = btn
 
-        self.status_var = tk.StringVar(value="Try playing in the Park or resting at Home for bonuses!")
+        # Play Snake button (only visible in Arcade)
+        self.snake_btn = ttk.Button(btn_frame, text="Play Snake", width=12, command=self._launch_snake)
+
+        self.status_var = tk.StringVar(value="Use the Map button to change locations.")
         ttk.Label(self, textvariable=self.status_var).pack(pady=5)
 
         self.refresh_ui()
@@ -75,6 +78,81 @@ class PetView(ttk.Frame):
         self.refresh_ui()
         info = self.game_state.get_current_location_info()
         self.status_var.set(f"Moved to {info['name']}. {info['desc']}")
+
+    def _launch_snake(self):
+        """Launch Snake minigame. Gives Happiness bonus when finished."""
+        def apply_bonus(final_score):
+            bonus = final_score // 5
+            if bonus > 0:
+                self.game_state.pet.needs.happiness = min(
+                    100.0, self.game_state.pet.needs.happiness + bonus
+                )
+                self.refresh_ui()
+                self.status_var.set(f"Snake bonus! +{bonus} Happiness")
+
+        snake_window = tk.Toplevel(self)
+        snake = SnakeGame(master=snake_window, on_game_end=apply_bonus)
+        snake_window.title("OurWorld - Snake")
+        snake_window.focus_force()
+
+    def _open_map(self):
+        """Open a visual map popup with recognizable icons."""
+        map_window = tk.Toplevel(self)
+        map_window.title("Map")
+        map_window.geometry("420x320")
+        map_window.resizable(False, False)
+
+        canvas = tk.Canvas(map_window, width=400, height=260, bg="#f0f0f0")
+        canvas.pack(pady=10)
+
+        # Draw locations with simple recognizable icons
+        self._draw_map_location(canvas, 70, 120, "home", "Home", "#8B4513")
+        self._draw_map_location(canvas, 200, 120, "park", "Park", "#228B22")
+        self._draw_map_location(canvas, 330, 120, "arcade", "Arcade", "#4169E1")
+
+        # Connecting paths
+        canvas.create_line(110, 130, 160, 130, fill="#555555", width=3)
+        canvas.create_line(240, 130, 290, 130, fill="#555555", width=3)
+
+        # Current location indicator
+        current = self.game_state.pet.location
+        if current == "home":
+            canvas.create_text(70, 180, text="You are here", fill="#8B4513", font=("TkDefaultFont", 10, "bold"))
+        elif current == "park":
+            canvas.create_text(200, 180, text="You are here", fill="#228B22", font=("TkDefaultFont", 10, "bold"))
+        elif current == "arcade":
+            canvas.create_text(330, 180, text="You are here", fill="#4169E1", font=("TkDefaultFont", 10, "bold"))
+
+    def _draw_map_location(self, canvas, x, y, location_key, label, color):
+        """Draw a simple recognizable icon for each location."""
+        tag = f"loc_{location_key}"
+
+        if location_key == "home":
+            # House
+            canvas.create_rectangle(x-20, y, x+20, y+30, fill="#DEB887", outline="#8B4513", width=2, tags=tag)
+            canvas.create_polygon(x-25, y, x, y-25, x+25, y, fill="#8B4513", outline="#5D3A1A", tags=tag)
+
+        elif location_key == "park":
+            # Tree
+            canvas.create_rectangle(x-5, y+5, x+5, y+25, fill="#8B4513", outline="#5D3A1A", tags=tag)
+            canvas.create_polygon(x-20, y+5, x, y-20, x+20, y+5, fill="#228B22", outline="#006400", tags=tag)
+            canvas.create_polygon(x-15, y-5, x, y-25, x+15, y-5, fill="#32CD32", outline="#228B22", tags=tag)
+
+        elif location_key == "arcade":
+            # Game machine
+            canvas.create_rectangle(x-18, y-10, x+18, y+25, fill="#333333", outline="#111111", width=2, tags=tag)
+            canvas.create_rectangle(x-12, y-5, x+12, y+5, fill="#00ff00", outline="#00aa00", tags=tag)
+            canvas.create_oval(x-8, y+10, x-2, y+18, fill="#ff0000", tags=tag)
+            canvas.create_oval(x+2, y+10, x+8, y+18, fill="#ffff00", tags=tag)
+
+        canvas.create_text(x, y+40, text=label, font=("TkDefaultFont", 11, "bold"), tags=tag)
+
+        # Make only this location's items clickable
+        def on_click(event, loc=location_key):
+            self._change_location(loc)
+            canvas.winfo_toplevel().destroy()
+
+        canvas.tag_bind(tag, "<Button-1>", on_click)
 
     def _draw_pet_and_environment(self):
         self.canvas.delete("all")
@@ -113,10 +191,13 @@ class PetView(ttk.Frame):
     def _disable_all_buttons(self):
         for btn in self.buttons.values():
             btn.config(state="disabled")
+        self.snake_btn.config(state="disabled")
 
     def _enable_all_buttons(self):
         for btn in self.buttons.values():
             btn.config(state="normal")
+        if self.game_state.pet.location == "arcade":
+            self.snake_btn.config(state="normal")
 
     def _on_feed(self):
         if self.animator.current_job:
@@ -190,6 +271,13 @@ class PetView(ttk.Frame):
 
         info = self.game_state.get_current_location_info()
         self.location_var.set(f"{info['name']} — {info['desc']}")
+
+        # Show or hide Snake button based on location
+        if self.game_state.pet.location == "arcade":
+            self.snake_btn.pack(side="left", padx=8)
+            self.snake_btn.config(state="normal")
+        else:
+            self.snake_btn.pack_forget()
 
         self.canvas.delete("mood")
         avg = (needs.hunger + needs.happiness + needs.energy + needs.cleanliness) / 4

@@ -1,0 +1,11 @@
+{
+  "name": "Pixel",
+  "needs": {
+    "hunger": 69.237303119991,
+    "happiness": 88.46398866999664,
+    "energy": 61.13493877498695,
+    "cleanliness": 48.83428638999469
+  },
+  "location": "home",
+  "days_alive": 0
+}

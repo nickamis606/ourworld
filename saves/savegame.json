@@ -1,11 +1,12 @@
 {
-  "name": "Pixel",
+  "name": "Luna",
+  "creature_type": "fluff",
   "needs": {
     "hunger": 0.0,
-    "happiness": 0.0,
-    "energy": 0.0,
-    "cleanliness": 0.0
+    "happiness": 59.59113617498661,
+    "energy": 16.12691632498172,
+    "cleanliness": 73.06075744999106
   },
-  "location": "park",
+  "location": "arcade",
   "days_alive": 0
 }

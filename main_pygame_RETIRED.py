@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """
-OurWorld Pygame - Complete clean version
-- Arcade Games button ONLY appears when in Arcade location
-- SnakeGame.draw() compatibility fixed
-- Consistent 4-space indentation
-- No placeholders
+OurWorld Pygame - Complete Version with Custom Pets + Proper Arcade Games UI
+Clean 4-space indentation. Fixed TabError + proper Arcade game selection.
 """
 import pygame
 import sys
@@ -291,24 +288,13 @@ class OurWorldPygame:
                 self.change_location("arcade"); self.map_mode = False
             return
 
-        if self.btn_feed.collidepoint(pos): 
-            self.start_action("feed")
-        elif self.btn_play.collidepoint(pos): 
-            self.start_action("play")
-        elif self.btn_clean.collidepoint(pos): 
-            self.start_action("clean")
-        elif self.btn_rest.collidepoint(pos): 
-            self.start_action("rest")
-        elif self.btn_map.collidepoint(pos): 
-            self.map_mode = not self.map_mode
-        elif self.game_state.pet.location == "arcade":
-            # Arcade game buttons - match the drawn positions
-            snake_btn = pygame.Rect(32, 372, 115, 36)
-            dash_btn = pygame.Rect(155, 372, 115, 36)
-            if snake_btn.collidepoint(pos):
-                self.start_snake()
-            elif dash_btn.collidepoint(pos):
-                self.start_pet_dash()
+        if self.btn_feed.collidepoint(pos): self.start_action("feed")
+        elif self.btn_play.collidepoint(pos): self.start_action("play")
+        elif self.btn_clean.collidepoint(pos): self.start_action("clean")
+        elif self.btn_rest.collidepoint(pos): self.start_action("rest")
+        elif self.btn_map.collidepoint(pos): self.map_mode = not self.map_mode
+        elif self.btn_arcade_game.collidepoint(pos) and self.game_state.pet.location == "arcade":
+            self.start_snake()
 
     def start_action(self, action):
         if self.anim_state or self.map_mode: return
@@ -336,24 +322,13 @@ class OurWorldPygame:
         SnakeClass = get_minigame("snake")
         self.snake_game = SnakeClass(self.screen, self.clock)
         self.status = "Snake time! Arrows/WASD • ESC to return"
-    
-    def start_pet_dash(self):
-        """Launch Pet Dash minigame"""
-        self.state = "snake"  # reuse snake state for now (we'll rename later if needed)
-        PetDashClass = get_minigame("pet_dash")
-        self.snake_game = PetDashClass(self.screen, self.clock, self.pet_color)  # pass pet color for theming
-        self.status = "Pet Dash! SPACE/UP/Click to jump • ESC to return"
 
     def draw_top_stats_bar(self):
         bar_height = 52
         section_width = WIDTH // 4
         needs = self.game_state.pet.needs
-        stats = [
-            ("Hunger", needs.hunger, RED),
-            ("Happiness", needs.happiness, GREEN),
-            ("Energy", needs.energy, YELLOW),
-            ("Cleanliness", needs.cleanliness, BLUE),
-        ]
+        stats = [("Hunger", needs.hunger, RED), ("Happiness", needs.happiness, GREEN),
+                 ("Energy", needs.energy, YELLOW), ("Cleanliness", needs.cleanliness, BLUE)]
         for i, (label, value, color) in enumerate(stats):
             x = i * section_width
             pygame.draw.rect(self.screen, (245, 245, 245), (x, 0, section_width, bar_height))
@@ -391,7 +366,6 @@ class OurWorldPygame:
         cx, cy = 340, 210 + int(5 * abs(3.14159 - self.pet_bob) / 3.14159)
         color = self.pet_color
         pid = self.pet_id
-
         if pid == 0:  # Bubbles
             pygame.draw.ellipse(self.screen, color, (cx-38, cy-5, 76, 62))
             pygame.draw.ellipse(self.screen, (220, 120, 150), (cx-38, cy-5, 76, 62), 4)
@@ -507,38 +481,19 @@ class OurWorldPygame:
         self.screen.blit(self.small_font.render("MAP (M)", True, WHITE), (self.btn_map.x + 10, self.btn_map.y + 8))
 
     def draw_arcade_games(self):
-        """Multi-game Arcade panel - shows only when in Arcade"""
-        if (not hasattr(self.game_state, 'pet') or 
-            getattr(self.game_state.pet, 'location', None) != "arcade" or 
-            self.map_mode or self.anim_state or self.state != "main"):
+        if self.game_state.pet.location != "arcade" or self.state != "main":
             return
-
-        # Background panel
-        panel_rect = pygame.Rect(20, 340, 260, 85)
-        pygame.draw.rect(self.screen, (40, 45, 70), panel_rect, border_radius=12)
-        pygame.draw.rect(self.screen, (100, 149, 237), panel_rect, width=3, border_radius=12)
-
-        # Title
+        panel_rect = pygame.Rect(20, 360, 220, 55)
+        pygame.draw.rect(self.screen, (40, 45, 70), panel_rect, border_radius=10)
+        pygame.draw.rect(self.screen, (100, 149, 237), panel_rect, width=2, border_radius=10)
         title = self.small_font.render("ARCADE GAMES", True, (255, 220, 100))
-        self.screen.blit(title, (panel_rect.x + 12, panel_rect.y + 8))
-
-        # Snake button
-        snake_btn = pygame.Rect(panel_rect.x + 12, panel_rect.y + 32, 115, 36)
-        snake_hover = snake_btn.collidepoint(pygame.mouse.get_pos())
-        snake_color = (80, 200, 120) if snake_hover else (60, 170, 100)
-        pygame.draw.rect(self.screen, snake_color, snake_btn, border_radius=8)
-        self.screen.blit(self.small_font.render("▶ Snake", True, WHITE), (snake_btn.x + 10, snake_btn.y + 9))
-
-        # Pet Dash button
-        dash_btn = pygame.Rect(panel_rect.x + 135, panel_rect.y + 32, 115, 36)
-        dash_hover = dash_btn.collidepoint(pygame.mouse.get_pos())
-        dash_color = (255, 160, 80) if dash_hover else (220, 120, 50)
-        pygame.draw.rect(self.screen, dash_color, dash_btn, border_radius=8)
-        self.screen.blit(self.small_font.render("▶ Pet Dash", True, WHITE), (dash_btn.x + 10, dash_btn.y + 9))
-
-        # Hint
+        self.screen.blit(title, (panel_rect.x + 10, panel_rect.y + 5))
+        btn_color = (80, 200, 120) if self.btn_arcade_game.collidepoint(pygame.mouse.get_pos()) else (60, 170, 100)
+        pygame.draw.rect(self.screen, btn_color, self.btn_arcade_game, border_radius=8)
+        snake_text = self.small_font.render("▶  Snake", True, WHITE)
+        self.screen.blit(snake_text, (self.btn_arcade_game.x + 12, self.btn_arcade_game.y + 8))
         hint = self.tiny_font.render("High score = Happiness bonus!", True, (200, 210, 230))
-        self.screen.blit(hint, (panel_rect.x + 12, panel_rect.y + 72))
+        self.screen.blit(hint, (panel_rect.x + 10, panel_rect.y + 38))
 
     def draw_map(self):
         overlay = pygame.Surface((640, 260), pygame.SRCALPHA)
@@ -579,7 +534,7 @@ class OurWorldPygame:
         if self.state == "snake" and self.snake_game:
             self.screen.fill(DARK)
             if hasattr(self.snake_game, 'draw'):
-                self.snake_game.draw()
+                self.snake_game.draw(self.screen)
             return
 
         loc = self.game_state.pet.location

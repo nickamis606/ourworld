@@ -3,9 +3,9 @@
   "creature_type": "fluff",
   "needs": {
     "hunger": 0.0,
-    "happiness": 59.59113617498661,
-    "energy": 16.12691632498172,
-    "cleanliness": 73.06075744999106
+    "happiness": 79.73106836499645,
+    "energy": 0.0,
+    "cleanliness": 0.0
   },
   "location": "arcade",
   "days_alive": 0

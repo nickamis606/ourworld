@@ -1,12 +1,60 @@
 {
-  "name": "Luna",
+  "name": "Nova",
   "creature_type": "fluff",
   "needs": {
-    "hunger": 0.0,
-    "happiness": 79.73106836499645,
-    "energy": 0.0,
-    "cleanliness": 0.0
+    "hunger": 82.35618471999186,
+    "happiness": 97.72851995499221,
+    "energy": 59.73865322499478,
+    "cleanliness": 57.288323289994146
   },
   "location": "arcade",
-  "days_alive": 0
+  "days_alive": 0,
+  "coins": 60,
+  "inventory": {
+    "flower_seeds": 3
+  },
+  "garden": [
+    {
+      "type": "sunflower",
+      "stage": 3,
+      "planted_time": 409894.5941751
+    },
+    {
+      "type": "sunflower",
+      "stage": 3,
+      "planted_time": 409935.1655426
+    },
+    {
+      "type": "sunflower",
+      "stage": 3,
+      "planted_time": 409935.996715
+    },
+    {
+      "type": "flower",
+      "stage": 3,
+      "planted_time": 410052.0670668
+    },
+    {
+      "type": "flower",
+      "stage": 3,
+      "planted_time": 410052.76742
+    },
+    {
+      "type": "flower",
+      "stage": 3,
+      "planted_time": 410053.2680498
+    },
+    {
+      "type": "flower",
+      "stage": 3,
+      "planted_time": 410053.8371124
+    },
+    {
+      "type": "flower",
+      "stage": 3,
+      "planted_time": 410066.367447
+    }
+  ],
+  "home_decorated": true,
+  "home_decoration_time": 410074.6232331
 }

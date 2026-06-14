@@ -1,9 +1,7 @@
 # core/pet_state.py
 from dataclasses import dataclass, field, asdict
 import time
-import json
-import os
-from typing import Dict
+from typing import Dict, List
 
 @dataclass
 class Needs:
@@ -19,7 +17,6 @@ class Needs:
         self.cleanliness = max(0.0, self.cleanliness - 0.2 * delta_seconds / 2)
 
     def apply_action(self, action: str) -> bool:
-        # (existing logic from skeleton)
         if action == "feed":
             self.hunger = min(100.0, self.hunger + 25)
             self.happiness = min(100.0, self.happiness + 5)
@@ -51,11 +48,16 @@ class Needs:
 @dataclass
 class PetState:
     name: str = "Pixel"
-    creature_type: str = "fluff"  # NEW: "stickbug", "sheep", "squirrel", "glow"
+    creature_type: str = "fluff"
     needs: Needs = field(default_factory=Needs)
     location: str = "home"
     days_alive: int = 0
     last_tick: float = field(default_factory=time.monotonic)
+    coins: int = 1000
+    inventory: Dict[str, int] = field(default_factory=dict)
+    garden: List[dict] = field(default_factory=list)
+    home_decorated: bool = False   
+    home_decoration_time: float = 0.0    
 
     def tick(self):
         now = time.monotonic()
@@ -75,4 +77,9 @@ class PetState:
     @classmethod
     def from_dict(cls, d):
         needs = Needs.from_dict(d.pop("needs", {}))
+        d.setdefault("coins", 1000)
+        d.setdefault("inventory", {})
+        d.setdefault("garden", [])
+        d.setdefault("home_decorated", False)
+        d.setdefault("home_decoration_time", 0.0)
         return cls(needs=needs, **d)

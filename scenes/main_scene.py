@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-MainScene - Primary gameplay scene (now using multiple shared UI components).
+MainScene - Primary gameplay scene (now using ArcadePanel as well).
 
-UI components used:
+UI components:
 - StatsBar
 - ActionButtons
 - ShopUI
-- ContextActions (NEW)
+- ContextActions
+- ArcadePanel (NEW)
 """
 
 import pygame
@@ -19,7 +20,8 @@ from sprites.pet_sprite import PetSprite
 from ui.stats_bar import StatsBar
 from ui.action_buttons import ActionButtons
 from ui.shop_ui import ShopUI
-from ui.context_actions import ContextActions   # NEW
+from ui.context_actions import ContextActions
+from ui.arcade_panel import ArcadePanel   # NEW
 
 
 class MainScene(BaseScene):
@@ -39,6 +41,7 @@ class MainScene(BaseScene):
         self.action_buttons = ActionButtons(y=415, small_font=self.small_font)
         self.shop_ui = ShopUI(self.small_font)
         self.context_actions = ContextActions(self.small_font)
+        self.arcade_panel = ArcadePanel(self.small_font, self.tiny_font)
 
         self.pet_sprite = PetSprite(pet_config, size=1.3, pos=(340, 210))
         self.pet_bob = 0.0
@@ -89,8 +92,14 @@ class MainScene(BaseScene):
 
         loc = self.game_state.pet.location
 
-        # Arcade scene switch
+        # Arcade scene switch (now also via ArcadePanel)
         if loc == "arcade":
+            game = self.arcade_panel.get_clicked_game(pos)
+            if game:
+                self.next_scene = "arcade"
+                return
+
+            # Fallback for old button positions if needed
             if pygame.Rect(450, 280, 80, 45).collidepoint(pos) or pygame.Rect(540, 280, 80, 45).collidepoint(pos):
                 self.next_scene = "arcade"
                 return
@@ -105,7 +114,7 @@ class MainScene(BaseScene):
                     self.anim_state = {"type": "feed", "start": time.time()}
                 return
 
-        # ContextActions (backyard planting/harvest + home decorate)
+        # ContextActions
         action = self.context_actions.get_clicked_action(pos, loc)
         if action:
             if action == "plant_flower":
@@ -207,14 +216,14 @@ class MainScene(BaseScene):
         self._draw_status(surface)
         self.action_buttons.draw(surface, anim_state_active=bool(self.anim_state))
 
-        # ShopUI
         self.shop_ui.draw(surface, loc)
 
-        # ContextActions (backyard + home)
         has_mature = any(p.get("stage", 0) >= 3 for p in self.game_state.pet.garden)
         self.context_actions.draw(surface, loc, self.game_state.pet.inventory, has_mature)
 
-        self._draw_arcade_games(surface)
+        # Use ArcadePanel when in arcade
+        if loc == "arcade" and not self.map_mode:
+            self.arcade_panel.draw(surface)
 
         if self.map_mode:
             self._draw_map_overlay(surface)
@@ -225,7 +234,7 @@ class MainScene(BaseScene):
         hint = self.tiny_font.render("F/P/C/R • M=Map • Q=Quit", True, (100, 100, 100))
         surface.blit(hint, (15, 455))
 
-    # Remaining drawing methods (environment, mood, status, arcade, map, animations)
+    # Remaining drawing methods (kept minimal)
     def _draw_environment(self, surface, loc):
         if loc == "home":
             pygame.draw.rect(surface, (200, 170, 130), (0, 260, self.width, 220))
@@ -304,22 +313,6 @@ class MainScene(BaseScene):
     def _draw_status(self, surface):
         txt = self.small_font.render(self.status, True, (20, 20, 20))
         surface.blit(txt, (15, 375))
-
-    def _draw_arcade_games(self, surface):
-        if self.game_state.pet.location != "arcade" or self.map_mode:
-            return
-        panel = pygame.Rect(450, 260, 170, 85)
-        pygame.draw.rect(surface, (40, 45, 70), panel, border_radius=10)
-        pygame.draw.rect(surface, (100, 149, 237), panel, width=2, border_radius=10)
-        surface.blit(self.small_font.render("ARCADE GAMES", True, (255, 220, 100)), (460, 268))
-
-        snake_btn = pygame.Rect(460, 295, 70, 40)
-        pygame.draw.rect(surface, (80, 200, 120), snake_btn, border_radius=6)
-        surface.blit(self.tiny_font.render("Snake", True, (255, 255, 255)), (475, 305))
-
-        dash_btn = pygame.Rect(540, 295, 70, 40)
-        pygame.draw.rect(surface, (255, 160, 80), dash_btn, border_radius=6)
-        surface.blit(self.tiny_font.render("Pet Dash", True, (255, 255, 255)), (548, 305))
 
     def _draw_anim_effect(self, surface):
         if not self.anim_state:

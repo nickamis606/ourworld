@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-MainScene - Primary gameplay scene (now using ArcadePanel as well).
+MainScene - Primary gameplay scene.
 
-UI components:
+Now uses MapOverlay for the neighborhood map.
+
+UI components used:
 - StatsBar
 - ActionButtons
 - ShopUI
 - ContextActions
-- ArcadePanel (NEW)
+- ArcadePanel
+- MapOverlay (NEW)
 """
 
 import pygame
@@ -21,7 +24,8 @@ from ui.stats_bar import StatsBar
 from ui.action_buttons import ActionButtons
 from ui.shop_ui import ShopUI
 from ui.context_actions import ContextActions
-from ui.arcade_panel import ArcadePanel   # NEW
+from ui.arcade_panel import ArcadePanel
+from ui.map_overlay import MapOverlay   # NEW
 
 
 class MainScene(BaseScene):
@@ -42,6 +46,7 @@ class MainScene(BaseScene):
         self.shop_ui = ShopUI(self.small_font)
         self.context_actions = ContextActions(self.small_font)
         self.arcade_panel = ArcadePanel(self.small_font, self.tiny_font)
+        self.map_overlay = MapOverlay(self.small_font, self.font)
 
         self.pet_sprite = PetSprite(pet_config, size=1.3, pos=(340, 210))
         self.pet_bob = 0.0
@@ -74,7 +79,14 @@ class MainScene(BaseScene):
 
     def _handle_click(self, pos: tuple):
         if self.map_mode:
-            self._handle_map_click(pos)
+            # Use MapOverlay for click detection
+            clicked = self.map_overlay.get_clicked_location(pos)
+            if clicked:
+                if clicked == "arcade":
+                    self.next_scene = "arcade"
+                else:
+                    self.change_location(clicked)
+                self.map_mode = False
             return
 
         # Main action buttons
@@ -92,15 +104,10 @@ class MainScene(BaseScene):
 
         loc = self.game_state.pet.location
 
-        # Arcade scene switch (now also via ArcadePanel)
+        # Arcade
         if loc == "arcade":
             game = self.arcade_panel.get_clicked_game(pos)
             if game:
-                self.next_scene = "arcade"
-                return
-
-            # Fallback for old button positions if needed
-            if pygame.Rect(450, 280, 80, 45).collidepoint(pos) or pygame.Rect(540, 280, 80, 45).collidepoint(pos):
                 self.next_scene = "arcade"
                 return
 
@@ -136,24 +143,6 @@ class MainScene(BaseScene):
                 result = self.game_state.decorate_home()
                 self.status = result.get("msg", "")
             return
-
-    def _handle_map_click(self, pos: tuple):
-        locations = {
-            (60, 110): "home",
-            (200, 110): "backyard",
-            (340, 110): "park",
-            (60, 230): "sweeties_candy_shop",
-            (200, 230): "gens_garden",
-            (340, 230): "arcade",
-        }
-        for rect_pos, loc in locations.items():
-            if pygame.Rect(*rect_pos, 130, 95).collidepoint(pos):
-                if loc == "arcade":
-                    self.next_scene = "arcade"
-                else:
-                    self.change_location(loc)
-                self.map_mode = False
-                return
 
     def start_action(self, action: str):
         if self.anim_state or self.map_mode:
@@ -221,12 +210,12 @@ class MainScene(BaseScene):
         has_mature = any(p.get("stage", 0) >= 3 for p in self.game_state.pet.garden)
         self.context_actions.draw(surface, loc, self.game_state.pet.inventory, has_mature)
 
-        # Use ArcadePanel when in arcade
         if loc == "arcade" and not self.map_mode:
             self.arcade_panel.draw(surface)
 
+        # Use MapOverlay when map_mode is active
         if self.map_mode:
-            self._draw_map_overlay(surface)
+            self.map_overlay.draw(surface, loc)
 
         if self.anim_state:
             self._draw_anim_effect(surface)
@@ -234,7 +223,7 @@ class MainScene(BaseScene):
         hint = self.tiny_font.render("F/P/C/R • M=Map • Q=Quit", True, (100, 100, 100))
         surface.blit(hint, (15, 455))
 
-    # Remaining drawing methods (kept minimal)
+    # Only environment and animation drawing remain in MainScene
     def _draw_environment(self, surface, loc):
         if loc == "home":
             pygame.draw.rect(surface, (200, 170, 130), (0, 260, self.width, 220))
@@ -336,29 +325,6 @@ class MainScene(BaseScene):
         elif etype == "plant":
             for i in range(3):
                 pygame.draw.circle(surface, (60, 160, 60), (cx + 60 + i * 15, cy - 10 - i * 8), 5)
-
-    def _draw_map_overlay(self, surface):
-        overlay = pygame.Surface((self.width, 300), pygame.SRCALPHA)
-        overlay.fill((250, 248, 240, 235))
-        surface.blit(overlay, (0, 60))
-        surface.blit(self.font.render("Neighborhood Map — Click a location", True, (20, 20, 20)), (25, 70))
-
-        positions = [
-            (60, 110, "home", "Home"),
-            (200, 110, "backyard", "Backyard"),
-            (340, 110, "park", "Park"),
-            (60, 230, "sweeties_candy_shop", "Sweeties"),
-            (200, 230, "gens_garden", "Garden"),
-            (340, 230, "arcade", "Arcade"),
-        ]
-        for px, py, key, name in positions:
-            is_current = (key == self.game_state.pet.location)
-            rect = pygame.Rect(px, py, 130, 95)
-            pygame.draw.rect(surface, (255, 255, 255), rect, border_radius=12)
-            border_color = (100, 149, 237) if is_current else (180, 160, 140)
-            pygame.draw.rect(surface, border_color, rect, width=4 if is_current else 2, border_radius=12)
-            name_surf = self.small_font.render(name, True, border_color)
-            surface.blit(name_surf, (px + 10, py + 70))
 
     def start_action(self, action: str):
         if self.anim_state or self.map_mode:

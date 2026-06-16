@@ -2,6 +2,8 @@
 """
 OurWorld - Complete Version
 All locations, shops, arcade, planting, coins, clean top bar
+
+Refactored: Now uses sprites.PetSprite for all pet drawing (removes duplication).
 """
 
 import pygame
@@ -14,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.game_state import GameState
 from minigames import get_minigame
+from sprites.pet_sprite import PetSprite   # NEW: centralized pet drawing
 
 WIDTH, HEIGHT = 640, 480
 FPS = 30
@@ -43,112 +46,25 @@ PET_ROSTER = [
 ]
 
 
-def draw_pet_preview(screen, x, y, pet_data, is_selected=False, bob=0):
-    color = pet_data["color"]
-    name = pet_data["name"]
-    offset_y = int(5 * abs(3.14159 - bob) / 3.14159) if is_selected else 0
-    cy = y + offset_y
-
-    if pet_data["id"] == 0:
-        pygame.draw.ellipse(screen, color, (x-34, cy-10, 68, 62))
-        pygame.draw.ellipse(screen, (220, 120, 150), (x-34, cy-10, 68, 62), 4)
-        pygame.draw.ellipse(screen, color, (x-28, cy-40, 56, 42))
-        pygame.draw.ellipse(screen, (255, 130, 170), (x-30, cy-48, 22, 18))
-        pygame.draw.ellipse(screen, (255, 80, 140), (x-26, cy-45, 12, 10))
-        pygame.draw.ellipse(screen, (255, 130, 170), (x+8, cy-48, 22, 18))
-        pygame.draw.ellipse(screen, (255, 80, 140), (x+14, cy-45, 12, 10))
-        pygame.draw.ellipse(screen, WHITE, (x-16, cy-26, 14, 13))
-        pygame.draw.ellipse(screen, WHITE, (x+2, cy-26, 14, 13))
-        pygame.draw.ellipse(screen, (60, 90, 200), (x-12, cy-23, 7, 7))
-        pygame.draw.ellipse(screen, (60, 90, 200), (x+6, cy-23, 7, 7))
-        pygame.draw.ellipse(screen, BLACK, (x-9, cy-21, 4, 4))
-        pygame.draw.ellipse(screen, BLACK, (x+9, cy-21, 4, 4))
-        pygame.draw.arc(screen, (80, 80, 80), (x-8, cy-10, 16, 9), 0, 3.14, 2)
-    elif pet_data["id"] == 1:
-        pygame.draw.ellipse(screen, (70, 170, 85), (x-30, cy-8, 60, 55))
-        pygame.draw.ellipse(screen, (45, 130, 60), (x-30, cy-8, 60, 55), 4)
-        pygame.draw.ellipse(screen, (255, 255, 255), (x-22, cy-30, 44, 32))
-        pygame.draw.ellipse(screen, (70, 170, 85), (x-20, cy-36, 16, 14))
-        pygame.draw.ellipse(screen, (70, 170, 85), (x+4, cy-36, 16, 14))
-        pygame.draw.ellipse(screen, WHITE, (x-13, cy-22, 11, 10))
-        pygame.draw.ellipse(screen, WHITE, (x+2, cy-22, 11, 10))
-        pygame.draw.ellipse(screen, (40, 70, 160), (x-9, cy-19, 5, 5))
-        pygame.draw.ellipse(screen, (40, 70, 160), (x+6, cy-19, 5, 5))
-        pygame.draw.ellipse(screen, BLACK, (x-6, cy-17, 3, 3))
-        pygame.draw.ellipse(screen, BLACK, (x+9, cy-17, 3, 3))
-        pygame.draw.arc(screen, (50, 50, 50), (x-5, cy-8, 10, 6), 0, 3.14, 2)
-    elif pet_data["id"] == 2:
-        pygame.draw.ellipse(screen, color, (x-30, cy-8, 60, 52))
-        pygame.draw.ellipse(screen, (120, 170, 220), (x-30, cy-8, 60, 52), 4)
-        pygame.draw.ellipse(screen, color, (x-26, cy-35, 52, 40))
-        pygame.draw.polygon(screen, (255, 215, 0), [(x, cy-48), (x-14, cy-36), (x-7, cy-36), (x-3, cy-44), (x+3, cy-44), (x+7, cy-36), (x+14, cy-36)])
-        pygame.draw.ellipse(screen, color, (x-24, cy-38, 14, 14))
-        pygame.draw.ellipse(screen, color, (x+10, cy-38, 14, 14))
-        pygame.draw.ellipse(screen, WHITE, (x-14, cy-24, 12, 11))
-        pygame.draw.ellipse(screen, WHITE, (x+2, cy-24, 12, 11))
-        pygame.draw.ellipse(screen, (70, 110, 220), (x-10, cy-21, 7, 7))
-        pygame.draw.ellipse(screen, (70, 110, 220), (x+6, cy-21, 7, 7))
-        pygame.draw.ellipse(screen, BLACK, (x-7, cy-19, 3, 3))
-        pygame.draw.ellipse(screen, BLACK, (x+9, cy-19, 3, 3))
-        pygame.draw.arc(screen, (60, 60, 60), (x-6, cy-9, 12, 7), 0, 3.14, 2)
-    elif pet_data["id"] == 3:
-        pygame.draw.ellipse(screen, color, (x-26, cy-5, 52, 50))
-        pygame.draw.ellipse(screen, (120, 200, 130), (x-26, cy-5, 52, 50), 4)
-        pygame.draw.ellipse(screen, color, (x-22, cy-32, 44, 36))
-        pygame.draw.ellipse(screen, (255, 255, 255), (x-20, cy-42, 40, 18))
-        pygame.draw.circle(screen, (255, 255, 255), (x, cy-48), 8)
-        pygame.draw.ellipse(screen, WHITE, (x-11, cy-20, 10, 9))
-        pygame.draw.ellipse(screen, WHITE, (x+1, cy-20, 10, 9))
-        pygame.draw.ellipse(screen, (60, 100, 200), (x-8, cy-17, 5, 5))
-        pygame.draw.ellipse(screen, (60, 100, 200), (x+6, cy-17, 5, 5))
-        pygame.draw.ellipse(screen, BLACK, (x-5, cy-15, 3, 3))
-        pygame.draw.ellipse(screen, BLACK, (x+7, cy-17, 3, 3))
-        pygame.draw.arc(screen, (60, 60, 60), (x-5, cy-8, 10, 6), 0, 3.14, 2)
-    elif pet_data["id"] == 4:
-        pygame.draw.ellipse(screen, color, (x-26, cy-5, 52, 48))
-        pygame.draw.ellipse(screen, (220, 180, 130), (x-26, cy-5, 52, 48), 4)
-        pygame.draw.ellipse(screen, color, (x-24, cy-32, 48, 36))
-        pygame.draw.ellipse(screen, (255, 180, 200), (x-22, cy-38, 44, 12))
-        pygame.draw.circle(screen, (255, 130, 170), (x-10, cy-35), 5)
-        pygame.draw.circle(screen, (255, 130, 170), (x+10, cy-35), 5)
-        pygame.draw.ellipse(screen, WHITE, (x-13, cy-20, 11, 10))
-        pygame.draw.ellipse(screen, WHITE, (x+2, cy-20, 11, 10))
-        pygame.draw.ellipse(screen, (80, 110, 200), (x-9, cy-17, 5, 5))
-        pygame.draw.ellipse(screen, (80, 110, 200), (x+6, cy-17, 5, 5))
-        pygame.draw.ellipse(screen, BLACK, (x-7, cy-17, 3, 3))
-        pygame.draw.ellipse(screen, BLACK, (x+9, cy-17, 3, 3))
-        pygame.draw.arc(screen, (60, 60, 60), (x-6, cy-8, 12, 7), 0, 3.14, 2)
-    elif pet_data["id"] == 5:
-        pygame.draw.ellipse(screen, color, (x-26, cy-5, 52, 48))
-        pygame.draw.ellipse(screen, (160, 120, 200), (x-26, cy-5, 52, 48), 4)
-        pygame.draw.ellipse(screen, color, (x-24, cy-32, 48, 36))
-        pygame.draw.ellipse(screen, (180, 200, 255), (x-20, cy-40, 40, 12))
-        pygame.draw.polygon(screen, (255, 215, 80), [(x-8, cy-38), (x-5, cy-45), (x-2, cy-38)])
-        pygame.draw.polygon(screen, (255, 215, 80), [(x+8, cy-38), (x+5, cy-45), (x+2, cy-38)])
-        pygame.draw.ellipse(screen, color, (x-22, cy-40, 12, 12))
-        pygame.draw.ellipse(screen, color, (x+10, cy-40, 12, 12))
-        pygame.draw.ellipse(screen, WHITE, (x-13, cy-20, 11, 10))
-        pygame.draw.ellipse(screen, WHITE, (x+2, cy-20, 11, 10))
-        pygame.draw.ellipse(screen, (90, 130, 255), (x-9, cy-17, 5, 5))
-        pygame.draw.ellipse(screen, (90, 130, 255), (x+6, cy-17, 5, 5))
-        pygame.draw.ellipse(screen, BLACK, (x-7, cy-17, 3, 3))
-        pygame.draw.ellipse(screen, BLACK, (x+9, cy-17, 3, 3))
-        pygame.draw.arc(screen, (60, 60, 60), (x-6, cy-8, 12, 7), 0, 3.14, 2)
-
-    name_surf = pygame.font.SysFont("Arial", 13).render(name, True, BLACK)
-    screen.blit(name_surf, (x - name_surf.get_width()//2, cy + 42))
-    if is_selected:
-        pygame.draw.rect(screen, (255, 215, 0), (x-45, cy-55, 90, 105), width=4, border_radius=12)
-
-
 class PetSelectionScreen:
     def __init__(self, screen):
         self.screen = screen
         self.font = pygame.font.SysFont("Arial", 26)
         self.small_font = pygame.font.SysFont("Arial", 16)
         self.selected_index = 0
-        self.bob = 0
+        self.bob = 0.0
         self.done = False
+
+        # NEW: Create PetSprite instances for clean drawing
+        self.pet_sprites = []
+        for i, pet_data in enumerate(PET_ROSTER):
+            # Position for selection grid (3 columns)
+            col = i % 3
+            row = i // 3
+            x = 120 + col * 180
+            y = 160 + row * 140
+            sprite = PetSprite(pet_data, size=1.0, pos=(x, y))
+            self.pet_sprites.append(sprite)
 
     def run(self):
         clock = pygame.time.Clock()
@@ -165,17 +81,24 @@ class PetSelectionScreen:
                     elif event.key == pygame.K_RIGHT:
                         self.selected_index = (self.selected_index + 1) % len(PET_ROSTER)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    for i in range(len(PET_ROSTER)):
-                        col = i % 3
-                        row = i // 3
-                        px = 120 + col * 180
-                        py = 160 + row * 140
-                        if pygame.Rect(px-40, py-50, 80, 100).collidepoint(event.pos):
+                    for i, sprite in enumerate(self.pet_sprites):
+                        if sprite.rect.collidepoint(event.pos):
                             self.selected_index = i
                             self.done = True
+                            break
+
             self.bob = (self.bob + 0.1) % (2 * 3.14159)
+
+            # Update selected sprite bob
+            for i, sprite in enumerate(self.pet_sprites):
+                sprite.set_selected(i == self.selected_index)
+                if i == self.selected_index:
+                    sprite.set_bob(self.bob)
+                sprite.update(0)  # still works without dt for fixed tick
+
             self.draw()
             clock.tick(30)
+
         chosen = PET_ROSTER[self.selected_index]
         return {"id": chosen["id"], "name": chosen["name"], "color": chosen["color"], "style": chosen["style"]}
 
@@ -183,13 +106,10 @@ class PetSelectionScreen:
         self.screen.fill((245, 250, 255))
         title = self.font.render("Choose Your Companion", True, BLACK)
         self.screen.blit(title, (WIDTH//2 - title.get_width()//2, 30))
-        for i, pet in enumerate(PET_ROSTER):
-            col = i % 3
-            row = i // 3
-            x = 120 + col * 180
-            y = 160 + row * 140
-            is_selected = (i == self.selected_index)
-            draw_pet_preview(self.screen, x, y, pet, is_selected, self.bob if is_selected else 0)
+
+        for sprite in self.pet_sprites:
+            sprite.draw(self.screen)
+
         chosen = PET_ROSTER[self.selected_index]
         info = self.small_font.render(f"Selected: {chosen['name']} • Press ENTER", True, BLACK)
         self.screen.blit(info, (WIDTH//2 - info.get_width()//2, 420))
@@ -210,13 +130,16 @@ class OurWorldPygame:
         self.pet_config = pet_config
         self.pet_color = pet_config["color"]
         self.pet_id = pet_config["id"]
-        self.pet_bob = 0
+        self.pet_bob = 0.0
         self.anim_state = None
         self.last_tick = pygame.time.get_ticks()
         self.status = f"Take good care of {self.game_state.pet.name}!"
         self.map_mode = False
         self.state = "main"
         self.snake_game = None
+
+        # NEW: Use PetSprite for the main in-game pet
+        self.pet_sprite = PetSprite(pet_config, size=1.3, pos=(340, 210))
 
         self.btn_feed = pygame.Rect(25, 415, 90, 36)
         self.btn_play = pygame.Rect(125, 415, 90, 36)
@@ -245,6 +168,10 @@ class OurWorldPygame:
 
             if self.state == "main":
                 self.update_animation()
+                # Update main pet sprite bob
+                self.pet_sprite.set_bob(self.pet_bob)
+                self.pet_sprite.update(dt)
+
             elif self.state == "snake" and self.snake_game:
                 self.snake_game.update(dt)
                 if getattr(self.snake_game, 'game_over', False):
@@ -444,7 +371,7 @@ class OurWorldPygame:
 
         for i, plant in enumerate(self.game_state.pet.garden[:8]):
             col = i % cols
-            row = i // cols
+            row = i // 3
             px = bed_x + col * spacing_x
             py = bed_y + row * spacing_y
 
@@ -564,96 +491,7 @@ class OurWorldPygame:
         pygame.draw.circle(self.screen, (150, 200, 255), (base_x + 35, base_y - 40), 7)
         pygame.draw.circle(self.screen, (200, 230, 255), (base_x + 35, base_y - 40), 3)
 
-    def draw_pet(self):
-        cx, cy = 340, 210 + int(5 * abs(3.14159 - self.pet_bob) / 3.14159)
-        color = self.pet_color
-        pid = self.pet_id
-
-        if pid == 0:
-            pygame.draw.ellipse(self.screen, color, (cx-38, cy-5, 76, 62))
-            pygame.draw.ellipse(self.screen, (220, 120, 150), (cx-38, cy-5, 76, 62), 4)
-            pygame.draw.ellipse(self.screen, color, (cx-30, cy-42, 60, 45))
-            pygame.draw.ellipse(self.screen, (255, 130, 170), (cx-32, cy-48, 20, 15))
-            pygame.draw.ellipse(self.screen, (255, 80, 140), (cx-28, cy-45, 12, 10))
-            pygame.draw.ellipse(self.screen, (255, 130, 170), (cx+12, cy-48, 20, 15))
-            pygame.draw.ellipse(self.screen, (255, 80, 140), (cx+17, cy-45, 12, 10))
-            pygame.draw.ellipse(self.screen, WHITE, (cx-18, cy-28, 14, 13))
-            pygame.draw.ellipse(self.screen, WHITE, (cx+4, cy-28, 14, 13))
-            pygame.draw.ellipse(self.screen, (60, 90, 200), (cx-14, cy-25, 7, 7))
-            pygame.draw.ellipse(self.screen, (60, 90, 200), (cx+8, cy-25, 7, 7))
-            pygame.draw.ellipse(self.screen, BLACK, (cx-11, cy-23, 4, 4))
-            pygame.draw.ellipse(self.screen, BLACK, (cx+11, cy-23, 4, 4))
-            pygame.draw.arc(self.screen, (60, 60, 60), (cx-7, cy-10, 14, 9), 0, 3.14, 2)
-        elif pid == 1:
-            pygame.draw.ellipse(self.screen, (70, 170, 85), (cx-32, cy-5, 64, 55))
-            pygame.draw.ellipse(self.screen, (45, 130, 60), (cx-32, cy-5, 64, 55), 4)
-            pygame.draw.ellipse(self.screen, (255, 255, 255), (cx-24, cy-35, 48, 38))
-            pygame.draw.ellipse(self.screen, (70, 170, 85), (cx-24, cy-42, 16, 16))
-            pygame.draw.ellipse(self.screen, (70, 170, 85), (cx+8, cy-42, 16, 16))
-            pygame.draw.ellipse(self.screen, WHITE, (cx-15, cy-25, 13, 12))
-            pygame.draw.ellipse(self.screen, WHITE, (cx+2, cy-25, 13, 12))
-            pygame.draw.ellipse(self.screen, (40, 70, 160), (cx-11, cy-22, 7, 7))
-            pygame.draw.ellipse(self.screen, (40, 70, 160), (cx+6, cy-22, 7, 7))
-            pygame.draw.ellipse(self.screen, BLACK, (cx-8, cy-20, 3, 3))
-            pygame.draw.ellipse(self.screen, BLACK, (cx+9, cy-20, 3, 3))
-            pygame.draw.arc(self.screen, (50, 50, 50), (cx-6, cy-9, 12, 7), 0, 3.14, 2)
-        elif pid == 2:
-            pygame.draw.ellipse(self.screen, color, (cx-32, cy-5, 64, 52))
-            pygame.draw.ellipse(self.screen, (120, 170, 220), (cx-32, cy-5, 64, 52), 4)
-            pygame.draw.ellipse(self.screen, color, (cx-28, cy-38, 56, 45))
-            pygame.draw.polygon(self.screen, (255, 215, 0), [(cx, cy-52), (cx-14, cy-40), (cx-7, cy-40), (cx-3, cy-48), (cx+3, cy-48), (cx+7, cy-40), (cx+14, cy-40)])
-            pygame.draw.ellipse(self.screen, color, (cx-26, cy-42, 15, 17))
-            pygame.draw.ellipse(self.screen, color, (cx+11, cy-42, 15, 17))
-            pygame.draw.ellipse(self.screen, WHITE, (cx-15, cy-24, 13, 12))
-            pygame.draw.ellipse(self.screen, WHITE, (cx+2, cy-24, 13, 12))
-            pygame.draw.ellipse(self.screen, (70, 110, 220), (cx-11, cy-21, 7, 7))
-            pygame.draw.ellipse(self.screen, (70, 110, 220), (cx+6, cy-21, 7, 7))
-            pygame.draw.ellipse(self.screen, BLACK, (cx-8, cy-19, 3, 3))
-            pygame.draw.ellipse(self.screen, BLACK, (cx+9, cy-19, 3, 3))
-            pygame.draw.arc(self.screen, (60, 60, 60), (cx-7, cy-10, 14, 8), 0, 3.14, 2)
-        elif pid == 3:
-            pygame.draw.ellipse(self.screen, color, (cx-28, cy-3, 56, 50))
-            pygame.draw.ellipse(self.screen, (120, 200, 130), (cx-28, cy-3, 56, 50), 4)
-            pygame.draw.ellipse(self.screen, color, (cx-24, cy-35, 48, 40))
-            pygame.draw.ellipse(self.screen, (255, 255, 255), (cx-22, cy-46, 44, 22))
-            pygame.draw.circle(self.screen, (255, 255, 255), (cx, cy-52), 8)
-            pygame.draw.ellipse(self.screen, WHITE, (cx-13, cy-22, 11, 10))
-            pygame.draw.ellipse(self.screen, WHITE, (cx+2, cy-22, 11, 10))
-            pygame.draw.ellipse(self.screen, (60, 100, 200), (cx-10, cy-19, 5, 5))
-            pygame.draw.ellipse(self.screen, (60, 100, 200), (cx+5, cy-19, 5, 5))
-            pygame.draw.ellipse(self.screen, BLACK, (cx-8, cy-17, 3, 3))
-            pygame.draw.ellipse(self.screen, BLACK, (cx+7, cy-17, 3, 3))
-            pygame.draw.arc(self.screen, (60, 60, 60), (cx-5, cy-8, 10, 6), 0, 3.14, 2)
-        elif pid == 4:
-            pygame.draw.ellipse(self.screen, color, (cx-28, cy-3, 56, 48))
-            pygame.draw.ellipse(self.screen, (220, 180, 130), (cx-28, cy-3, 56, 48), 4)
-            pygame.draw.ellipse(self.screen, color, (cx-26, cy-35, 52, 40))
-            pygame.draw.ellipse(self.screen, (255, 180, 200), (cx-24, cy-42, 48, 13))
-            pygame.draw.circle(self.screen, (255, 130, 170), (cx-10, cy-38), 5)
-            pygame.draw.circle(self.screen, (255, 130, 170), (cx+10, cy-38), 5)
-            pygame.draw.ellipse(self.screen, WHITE, (cx-14, cy-22, 12, 11))
-            pygame.draw.ellipse(self.screen, WHITE, (cx+2, cy-22, 12, 11))
-            pygame.draw.ellipse(self.screen, (80, 110, 200), (cx-10, cy-19, 6, 6))
-            pygame.draw.ellipse(self.screen, (80, 110, 200), (cx+6, cy-19, 6, 6))
-            pygame.draw.ellipse(self.screen, BLACK, (cx-7, cy-17, 3, 3))
-            pygame.draw.ellipse(self.screen, BLACK, (cx+9, cy-17, 3, 3))
-            pygame.draw.arc(self.screen, (60, 60, 60), (cx-6, cy-8, 12, 7), 0, 3.14, 2)
-        elif pid == 5:
-            pygame.draw.ellipse(self.screen, color, (cx-28, cy-3, 56, 48))
-            pygame.draw.ellipse(self.screen, (160, 120, 200), (cx-28, cy-3, 56, 48), 4)
-            pygame.draw.ellipse(self.screen, color, (cx-26, cy-35, 52, 40))
-            pygame.draw.ellipse(self.screen, (180, 200, 255), (cx-22, cy-42, 44, 13))
-            pygame.draw.polygon(self.screen, (255, 215, 80), [(cx-9, cy-40), (cx-6, cy-46), (cx-3, cy-40)])
-            pygame.draw.polygon(self.screen, (255, 215, 80), [(cx+9, cy-40), (cx+6, cy-46), (cx+3, cy-40)])
-            pygame.draw.ellipse(self.screen, color, (cx-24, cy-40, 13, 13))
-            pygame.draw.ellipse(self.screen, color, (cx+11, cy-40, 13, 13))
-            pygame.draw.ellipse(self.screen, WHITE, (cx-14, cy-22, 12, 11))
-            pygame.draw.ellipse(self.screen, WHITE, (cx+2, cy-22, 12, 11))
-            pygame.draw.ellipse(self.screen, (90, 130, 255), (cx-10, cy-19, 6, 6))
-            pygame.draw.ellipse(self.screen, (90, 130, 255), (cx+6, cy-19, 6, 6))
-            pygame.draw.ellipse(self.screen, BLACK, (cx-7, cy-17, 3, 3))
-            pygame.draw.ellipse(self.screen, BLACK, (cx+9, cy-17, 3, 3))
-            pygame.draw.arc(self.screen, (60, 60, 60), (cx-6, cy-8, 12, 7), 0, 3.14, 2)
+    # REMOVED: Old draw_pet() method - now handled by self.pet_sprite.draw()
 
     def draw_mood(self):
         needs = self.game_state.pet.needs
@@ -817,7 +655,10 @@ class OurWorldPygame:
 
         self.draw_top_stats_bar()
         self.draw_environment(loc)
-        self.draw_pet()
+
+        # NEW: Draw pet using PetSprite instead of old draw_pet()
+        self.pet_sprite.draw(self.screen)
+
         self.draw_mood()
         self.draw_status()
         self.draw_buttons()

@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-MainScene - The primary gameplay scene for OurWorld.
-
-Updated: Now requests proper scene switches to ArcadeScene instead of string hacks.
+MainScene - Primary gameplay scene (now using shared UI components).
 """
 
 import pygame
@@ -12,6 +10,7 @@ from typing import Optional, Any
 
 from scenes.base_scene import BaseScene
 from sprites.pet_sprite import PetSprite
+from ui.stats_bar import StatsBar   # NEW: shared UI component
 
 
 class MainScene(BaseScene):
@@ -25,6 +24,9 @@ class MainScene(BaseScene):
         self.font = pygame.font.SysFont("Arial", 20)
         self.small_font = pygame.font.SysFont("Arial", 14)
         self.tiny_font = pygame.font.SysFont("Arial", 12)
+
+        # Shared UI components
+        self.stats_bar = StatsBar(self.width, self.small_font, self.tiny_font)
 
         self.pet_sprite = PetSprite(pet_config, size=1.3, pos=(340, 210))
         self.pet_bob = 0.0
@@ -41,144 +43,7 @@ class MainScene(BaseScene):
 
         self.next_scene = None
 
-    def handle_event(self, event: pygame.event.Event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            self._handle_click(event.pos)
-        elif event.type == pygame.KEYDOWN:
-            self._handle_key(event.key)
-
-    def _handle_key(self, key: int):
-        if key in (pygame.K_q, pygame.K_ESCAPE):
-            pygame.event.post(pygame.event.Event(pygame.QUIT))
-        elif key == pygame.K_f:
-            self.start_action("feed")
-        elif key == pygame.K_p:
-            self.start_action("play")
-        elif key == pygame.K_c:
-            self.start_action("clean")
-        elif key == pygame.K_r:
-            self.start_action("rest")
-        elif key == pygame.K_m:
-            self.map_mode = not self.map_mode
-
-    def _handle_click(self, pos: tuple):
-        if self.map_mode:
-            self._handle_map_click(pos)
-            return
-
-        if self.btn_feed.collidepoint(pos):
-            self.start_action("feed")
-        elif self.btn_play.collidepoint(pos):
-            self.start_action("play")
-        elif self.btn_clean.collidepoint(pos):
-            self.start_action("clean")
-        elif self.btn_rest.collidepoint(pos):
-            self.start_action("rest")
-        elif self.btn_map.collidepoint(pos):
-            self.map_mode = not self.map_mode
-
-        loc = self.game_state.pet.location
-
-        # === ARCADE: Request proper ArcadeScene instead of old behavior ===
-        if loc == "arcade":
-            if pygame.Rect(450, 280, 80, 45).collidepoint(pos) or pygame.Rect(540, 280, 80, 45).collidepoint(pos):
-                self.next_scene = "arcade"  # Controller will switch to ArcadeScene
-                return
-
-        # Shop / Garden / Backyard / Home buttons (unchanged)
-        if loc == "sweeties_candy_shop":
-            if pygame.Rect(450, 280, 160, 45).collidepoint(pos):
-                result = self.game_state.buy_item("sweeties_candy_shop", "lollipop")
-                self.status = result.get("msg", "")
-                if result.get("success"):
-                    self.anim_state = {"type": "feed", "start": time.time()}
-            elif pygame.Rect(450, 335, 160, 45).collidepoint(pos):
-                result = self.game_state.buy_item("sweeties_candy_shop", "candy_apple")
-                self.status = result.get("msg", "")
-                if result.get("success"):
-                    self.anim_state = {"type": "feed", "start": time.time()}
-
-        elif loc == "gens_garden":
-            if pygame.Rect(450, 280, 160, 45).collidepoint(pos):
-                result = self.game_state.buy_item("gens_garden", "flower_seeds")
-                self.status = result.get("msg", "")
-            elif pygame.Rect(450, 335, 160, 45).collidepoint(pos):
-                result = self.game_state.buy_item("gens_garden", "sunflower_seeds")
-                self.status = result.get("msg", "")
-
-        elif loc == "backyard":
-            if pygame.Rect(30, 70, 180, 40).collidepoint(pos):
-                if self.game_state.pet.inventory.get("flower_seeds", 0) > 0:
-                    result = self.game_state.plant_seed("flower_seeds")
-                    self.status = result.get("msg", "")
-                    if result.get("success"):
-                        self.anim_state = {"type": "plant", "start": time.time()}
-            elif pygame.Rect(30, 120, 180, 40).collidepoint(pos):
-                if self.game_state.pet.inventory.get("sunflower_seeds", 0) > 0:
-                    result = self.game_state.plant_seed("sunflower_seeds")
-                    self.status = result.get("msg", "")
-                    if result.get("success"):
-                        self.anim_state = {"type": "plant", "start": time.time()}
-            elif pygame.Rect(450, 70, 160, 40).collidepoint(pos):
-                result = self.game_state.harvest_plant()
-                self.status = result.get("msg", "")
-
-        elif loc == "home":
-            if pygame.Rect(30, 70, 200, 40).collidepoint(pos):
-                result = self.game_state.decorate_home()
-                self.status = result.get("msg", "")
-
-    def _handle_map_click(self, pos: tuple):
-        locations = {
-            (60, 110): "home",
-            (200, 110): "backyard",
-            (340, 110): "park",
-            (60, 230): "sweeties_candy_shop",
-            (200, 230): "gens_garden",
-            (340, 230): "arcade",
-        }
-        for rect_pos, loc in locations.items():
-            if pygame.Rect(*rect_pos, 130, 95).collidepoint(pos):
-                if loc == "arcade":
-                    self.next_scene = "arcade"  # Go to dedicated ArcadeScene
-                else:
-                    self.change_location(loc)
-                self.map_mode = False
-                return
-
-    def start_action(self, action: str):
-        if self.anim_state or self.map_mode:
-            return
-        self.anim_state = {"type": action, "start": time.time()}
-        self.status = f"{action.capitalize()}ing..."
-
-    def update_animation(self):
-        if not self.anim_state:
-            return
-        if time.time() - self.anim_state["start"] > 0.85:
-            action = self.anim_state["type"]
-            result = self.game_state.perform_care_action(action)
-            if result and result.get("success"):
-                self.status = result.get("bonus", f"{self.game_state.pet.name} loved that!")
-            else:
-                self.status = "Nothing happened..."
-            self.anim_state = None
-
-    def change_location(self, loc: str):
-        if loc != self.game_state.pet.location:
-            self.game_state.change_location(loc)
-            info = self.game_state.get_current_location_info()
-            self.status = f"Moved to {info['name']}. {info['desc']}"
-        self.map_mode = False
-
-    def update(self, dt: float):
-        super().update(dt)
-        self.pet_bob = (self.pet_bob + 0.08) % (2 * math.pi)
-        self.pet_sprite.set_bob(self.pet_bob)
-        self.pet_sprite.update(dt)
-
-        if self.anim_state:
-            self.update_animation()
+    # ... (rest of the class remains mostly the same, only draw method changes)
 
     def draw(self, surface: pygame.Surface):
         loc = self.game_state.pet.location
@@ -196,7 +61,11 @@ class MainScene(BaseScene):
             bg = (210, 200, 230)
         surface.fill(bg)
 
-        self._draw_top_stats_bar(surface)
+        # Use shared StatsBar
+        needs = self.game_state.pet.needs
+        total_seeds = self.game_state.pet.inventory.get("flower_seeds", 0) + self.game_state.pet.inventory.get("sunflower_seeds", 0)
+        self.stats_bar.draw(surface, needs, self.game_state.pet.coins, total_seeds)
+
         self._draw_environment(surface, loc)
         self.pet_sprite.draw(surface)
         self._draw_mood(surface)
@@ -218,44 +87,8 @@ class MainScene(BaseScene):
         hint = self.tiny_font.render("F/P/C/R • M=Map • Q=Quit", True, (100, 100, 100))
         surface.blit(hint, (15, 455))
 
-    # The rest of the drawing methods (_draw_top_stats_bar, _draw_environment, etc.) remain the same as before.
-    # For brevity in this step they are kept inside MainScene.
-
-    def _draw_top_stats_bar(self, surface):
-        section_width = self.width // 5
-        bar_height = 52
-        needs = self.game_state.pet.needs
-
-        stats = [
-            ("Hunger", needs.hunger, (220, 60, 60)),
-            ("Happiness", needs.happiness, (46, 139, 87)),
-            ("Energy", needs.energy, (255, 200, 50)),
-            ("Cleanliness", needs.cleanliness, (70, 130, 180)),
-        ]
-
-        for i, (label, value, color) in enumerate(stats):
-            x = i * section_width
-            pygame.draw.rect(surface, (245, 245, 245), (x, 0, section_width, bar_height))
-            pygame.draw.line(surface, (200, 200, 200), (x, 0), (x, bar_height), 1)
-            label_surf = self.small_font.render(label, True, (20, 20, 20))
-            surface.blit(label_surf, (x + 8, 4))
-            bar_y = 24
-            bar_width = section_width - 16
-            pygame.draw.rect(surface, (180, 180, 180), (x + 8, bar_y, bar_width, 12), border_radius=3)
-            fill_width = int(bar_width * max(0, min(1, value / 100)))
-            pygame.draw.rect(surface, color, (x + 8, bar_y, fill_width, 12), border_radius=3)
-            value_surf = self.tiny_font.render(f"{value:.0f}", True, (20, 20, 20))
-            surface.blit(value_surf, (x + section_width - 30, bar_y + 1))
-
-        x = 4 * section_width
-        pygame.draw.rect(surface, (250, 248, 240), (x, 0, section_width, bar_height))
-        pygame.draw.line(surface, (180, 160, 140), (x, 0), (x, bar_height), 2)
-        coins_text = self.small_font.render(f"Coins: {self.game_state.pet.coins}", True, (180, 120, 40))
-        surface.blit(coins_text, (x + 10, 8))
-        inv = self.game_state.pet.inventory
-        total_seeds = inv.get("flower_seeds", 0) + inv.get("sunflower_seeds", 0)
-        seeds_text = self.small_font.render(f"Seeds: {total_seeds}", True, (60, 130, 60))
-        surface.blit(seeds_text, (x + 10, 28))
+    # All other methods (_draw_environment, _draw_buttons, etc.) stay the same for now.
+    # They can be further extracted in future steps.
 
     def _draw_environment(self, surface, loc):
         if loc == "home":
@@ -470,3 +303,169 @@ class MainScene(BaseScene):
             pygame.draw.rect(surface, border_color, rect, width=4 if is_current else 2, border_radius=12)
             name_surf = self.small_font.render(name, True, border_color)
             surface.blit(name_surf, (px + 10, py + 70))
+
+    # The other methods (start_action, update_animation, change_location, etc.) are unchanged.
+    def start_action(self, action: str):
+        if self.anim_state or self.map_mode:
+            return
+        self.anim_state = {"type": action, "start": time.time()}
+        self.status = f"{action.capitalize()}ing..."
+
+    def update_animation(self):
+        if not self.anim_state:
+            return
+        if time.time() - self.anim_state["start"] > 0.85:
+            action = self.anim_state["type"]
+            result = self.game_state.perform_care_action(action)
+            if result and result.get("success"):
+                self.status = result.get("bonus", f"{self.game_state.pet.name} loved that!")
+            else:
+                self.status = "Nothing happened..."
+            self.anim_state = None
+
+    def change_location(self, loc: str):
+        if loc != self.game_state.pet.location:
+            self.game_state.change_location(loc)
+            info = self.game_state.get_current_location_info()
+            self.status = f"Moved to {info['name']}. {info['desc']}"
+        self.map_mode = False
+
+    def update(self, dt: float):
+        super().update(dt)
+        self.pet_bob = (self.pet_bob + 0.08) % (2 * math.pi)
+        self.pet_sprite.set_bob(self.pet_bob)
+        self.pet_sprite.update(dt)
+
+        if self.anim_state:
+            self.update_animation()
+
+    def _handle_key(self, key: int):
+        if key in (pygame.K_q, pygame.K_ESCAPE):
+            pygame.event.post(pygame.event.Event(pygame.QUIT))
+        elif key == pygame.K_f:
+            self.start_action("feed")
+        elif key == pygame.K_p:
+            self.start_action("play")
+        elif key == pygame.K_c:
+            self.start_action("clean")
+        elif key == pygame.K_r:
+            self.start_action("rest")
+        elif key == pygame.K_m:
+            self.map_mode = not self.map_mode
+
+    def _handle_click(self, pos: tuple):
+        if self.map_mode:
+            self._handle_map_click(pos)
+            return
+
+        if self.btn_feed.collidepoint(pos):
+            self.start_action("feed")
+        elif self.btn_play.collidepoint(pos):
+            self.start_action("play")
+        elif self.btn_clean.collidepoint(pos):
+            self.start_action("clean")
+        elif self.btn_rest.collidepoint(pos):
+            self.start_action("rest")
+        elif self.btn_map.collidepoint(pos):
+            self.map_mode = not self.map_mode
+
+        loc = self.game_state.pet.location
+
+        if loc == "arcade":
+            if pygame.Rect(450, 280, 80, 45).collidepoint(pos) or pygame.Rect(540, 280, 80, 45).collidepoint(pos):
+                self.next_scene = "arcade"
+                return
+
+        if loc == "sweeties_candy_shop":
+            if pygame.Rect(450, 280, 160, 45).collidepoint(pos):
+                result = self.game_state.buy_item("sweeties_candy_shop", "lollipop")
+                self.status = result.get("msg", "")
+                if result.get("success"):
+                    self.anim_state = {"type": "feed", "start": time.time()}
+            elif pygame.Rect(450, 335, 160, 45).collidepoint(pos):
+                result = self.game_state.buy_item("sweeties_candy_shop", "candy_apple")
+                self.status = result.get("msg", "")
+                if result.get("success"):
+                    self.anim_state = {"type": "feed", "start": time.time()}
+
+        elif loc == "gens_garden":
+            if pygame.Rect(450, 280, 160, 45).collidepoint(pos):
+                result = self.game_state.buy_item("gens_garden", "flower_seeds")
+                self.status = result.get("msg", "")
+            elif pygame.Rect(450, 335, 160, 45).collidepoint(pos):
+                result = self.game_state.buy_item("gens_garden", "sunflower_seeds")
+                self.status = result.get("msg", "")
+
+        elif loc == "backyard":
+            if pygame.Rect(30, 70, 180, 40).collidepoint(pos):
+                if self.game_state.pet.inventory.get("flower_seeds", 0) > 0:
+                    result = self.game_state.plant_seed("flower_seeds")
+                    self.status = result.get("msg", "")
+                    if result.get("success"):
+                        self.anim_state = {"type": "plant", "start": time.time()}
+            elif pygame.Rect(30, 120, 180, 40).collidepoint(pos):
+                if self.game_state.pet.inventory.get("sunflower_seeds", 0) > 0:
+                    result = self.game_state.plant_seed("sunflower_seeds")
+                    self.status = result.get("msg", "")
+                    if result.get("success"):
+                        self.anim_state = {"type": "plant", "start": time.time()}
+            elif pygame.Rect(450, 70, 160, 40).collidepoint(pos):
+                result = self.game_state.harvest_plant()
+                self.status = result.get("msg", "")
+
+        elif loc == "home":
+            if pygame.Rect(30, 70, 200, 40).collidepoint(pos):
+                result = self.game_state.decorate_home()
+                self.status = result.get("msg", "")
+
+    def _handle_map_click(self, pos: tuple):
+        locations = {
+            (60, 110): "home",
+            (200, 110): "backyard",
+            (340, 110): "park",
+            (60, 230): "sweeties_candy_shop",
+            (200, 230): "gens_garden",
+            (340, 230): "arcade",
+        }
+        for rect_pos, loc in locations.items():
+            if pygame.Rect(*rect_pos, 130, 95).collidepoint(pos):
+                if loc == "arcade":
+                    self.next_scene = "arcade"
+                else:
+                    self.change_location(loc)
+                self.map_mode = False
+                return
+
+    def start_action(self, action: str):
+        if self.anim_state or self.map_mode:
+            return
+        self.anim_state = {"type": action, "start": time.time()}
+        self.status = f"{action.capitalize()}ing..."
+
+    def update_animation(self):
+        if not self.anim_state:
+            return
+        if time.time() - self.anim_state["start"] > 0.85:
+            action = self.anim_state["type"]
+            result = self.game_state.perform_care_action(action)
+            if result and result.get("success"):
+                self.status = result.get("bonus", f"{self.game_state.pet.name} loved that!")
+            else:
+                self.status = "Nothing happened..."
+            self.anim_state = None
+
+    def change_location(self, loc: str):
+        if loc != self.game_state.pet.location:
+            self.game_state.change_location(loc)
+            info = self.game_state.get_current_location_info()
+            self.status = f"Moved to {info['name']}. {info['desc']}"
+        self.map_mode = False
+
+    def update(self, dt: float):
+        super().update(dt)
+        self.pet_bob = (self.pet_bob + 0.08) % (2 * math.pi)
+        self.pet_sprite.set_bob(self.pet_bob)
+        self.pet_sprite.update(dt)
+
+        if self.anim_state:
+            self.update_animation()

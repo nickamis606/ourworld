@@ -2,24 +2,20 @@
 """
 ShopUI - Reusable component for shop interfaces in OurWorld.
 
-Currently supports:
-- Sweeties Candy Shop (Lollipop, Candy Apple)
-- Gens Garden (Flower Seeds, Sunflower Seeds)
-
-Can be extended for future shops.
+Refactored to use helpers from ui/common.py
 """
 
 import pygame
 from typing import Dict, Tuple
+
+from ui.common import draw_rounded_rect
 
 
 class ShopUI:
     def __init__(self, small_font):
         self.small_font = small_font
 
-        # Shop button definitions
         self.buttons: Dict[str, dict] = {
-            # Sweeties Candy Shop
             "lollipop": {
                 "rect": pygame.Rect(450, 280, 160, 45),
                 "color": (255, 200, 210),
@@ -32,7 +28,6 @@ class ShopUI:
                 "border": (200, 50, 70),
                 "label": "Buy Candy Apple (25)"
             },
-            # Gens Garden
             "flower_seeds": {
                 "rect": pygame.Rect(450, 280, 160, 45),
                 "color": (200, 230, 255),
@@ -48,7 +43,6 @@ class ShopUI:
         }
 
     def draw(self, surface, location: str):
-        """Draw shop buttons for the current location."""
         if location == "sweeties_candy_shop":
             self._draw_button(surface, "lollipop")
             self._draw_button(surface, "candy_apple")
@@ -60,13 +54,14 @@ class ShopUI:
         btn = self.buttons[key]
         rect = btn["rect"]
 
-        pygame.draw.rect(surface, btn["color"], rect, border_radius=8)
-        pygame.draw.rect(surface, btn["border"], rect, width=2, border_radius=8)
+        # Use shared helper
+        draw_rounded_rect(surface, rect, btn["color"], radius=8)
+        draw_rounded_rect(surface, rect, btn["border"], radius=8, width=2)
+
         text_surf = self.small_font.render(btn["label"], True, btn["border"])
         surface.blit(text_surf, (rect.x + 10, rect.y + 12))
 
     def get_clicked_item(self, pos: Tuple[int, int], location: str) -> str:
-        """Return which item was clicked, or empty string."""
         if location == "sweeties_candy_shop":
             if self.buttons["lollipop"]["rect"].collidepoint(pos):
                 return "lollipop"

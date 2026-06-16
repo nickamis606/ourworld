@@ -2,17 +2,7 @@
 """
 MainScene - The primary gameplay scene for OurWorld.
 
-Handles:
-- Environment / location background
-- Pet display (via PetSprite)
-- Top stats bar
-- Action buttons (Feed, Play, Clean, Rest, Map)
-- Location-specific UIs (shops, planting, arcade, harvest, decorate)
-- Action animations
-- Status + mood text
-- Map overlay
-
-This scene replaces most of the old monolithic OurWorldPygame drawing/logic.
+Updated: Now requests proper scene switches to ArcadeScene instead of string hacks.
 """
 
 import pygame
@@ -32,33 +22,25 @@ class MainScene(BaseScene):
         self.width = screen.get_width()
         self.height = screen.get_height()
 
-        # Fonts
         self.font = pygame.font.SysFont("Arial", 20)
         self.small_font = pygame.font.SysFont("Arial", 14)
         self.tiny_font = pygame.font.SysFont("Arial", 12)
 
-        # Pet sprite (created here or passed in)
         self.pet_sprite = PetSprite(pet_config, size=1.3, pos=(340, 210))
         self.pet_bob = 0.0
 
-        # UI state
         self.map_mode = False
         self.anim_state: Optional[dict] = None
         self.status = f"Take good care of {game_state.pet.name}!"
 
-        # Action buttons (bottom bar)
         self.btn_feed = pygame.Rect(25, 415, 90, 36)
         self.btn_play = pygame.Rect(125, 415, 90, 36)
         self.btn_clean = pygame.Rect(225, 415, 90, 36)
         self.btn_rest = pygame.Rect(325, 415, 90, 36)
         self.btn_map = pygame.Rect(430, 415, 85, 36)
 
-        # For scene switching requests
         self.next_scene = None
 
-    # ------------------------------------------------------------------
-    # Event handling
-    # ------------------------------------------------------------------
     def handle_event(self, event: pygame.event.Event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self._handle_click(event.pos)
@@ -84,7 +66,6 @@ class MainScene(BaseScene):
             self._handle_map_click(pos)
             return
 
-        # Bottom buttons
         if self.btn_feed.collidepoint(pos):
             self.start_action("feed")
         elif self.btn_play.collidepoint(pos):
@@ -96,9 +77,15 @@ class MainScene(BaseScene):
         elif self.btn_map.collidepoint(pos):
             self.map_mode = not self.map_mode
 
-        # Location-specific buttons
         loc = self.game_state.pet.location
 
+        # === ARCADE: Request proper ArcadeScene instead of old behavior ===
+        if loc == "arcade":
+            if pygame.Rect(450, 280, 80, 45).collidepoint(pos) or pygame.Rect(540, 280, 80, 45).collidepoint(pos):
+                self.next_scene = "arcade"  # Controller will switch to ArcadeScene
+                return
+
+        # Shop / Garden / Backyard / Home buttons (unchanged)
         if loc == "sweeties_candy_shop":
             if pygame.Rect(450, 280, 160, 45).collidepoint(pos):
                 result = self.game_state.buy_item("sweeties_candy_shop", "lollipop")
@@ -132,20 +119,14 @@ class MainScene(BaseScene):
                     self.status = result.get("msg", "")
                     if result.get("success"):
                         self.anim_state = {"type": "plant", "start": time.time()}
-            elif pygame.Rect(450, 70, 160, 40).collidepoint(pos):  # Harvest
+            elif pygame.Rect(450, 70, 160, 40).collidepoint(pos):
                 result = self.game_state.harvest_plant()
                 self.status = result.get("msg", "")
 
         elif loc == "home":
-            if pygame.Rect(30, 70, 200, 40).collidepoint(pos):  # Decorate
+            if pygame.Rect(30, 70, 200, 40).collidepoint(pos):
                 result = self.game_state.decorate_home()
                 self.status = result.get("msg", "")
-
-        elif loc == "arcade":
-            if pygame.Rect(450, 280, 80, 45).collidepoint(pos):
-                self._request_snake()
-            elif pygame.Rect(540, 280, 80, 45).collidepoint(pos):
-                self._request_pet_dash()
 
     def _handle_map_click(self, pos: tuple):
         locations = {
@@ -158,13 +139,13 @@ class MainScene(BaseScene):
         }
         for rect_pos, loc in locations.items():
             if pygame.Rect(*rect_pos, 130, 95).collidepoint(pos):
-                self.change_location(loc)
+                if loc == "arcade":
+                    self.next_scene = "arcade"  # Go to dedicated ArcadeScene
+                else:
+                    self.change_location(loc)
                 self.map_mode = False
                 return
 
-    # ------------------------------------------------------------------
-    # Game logic
-    # ------------------------------------------------------------------
     def start_action(self, action: str):
         if self.anim_state or self.map_mode:
             return
@@ -190,19 +171,8 @@ class MainScene(BaseScene):
             self.status = f"Moved to {info['name']}. {info['desc']}"
         self.map_mode = False
 
-    def _request_snake(self):
-        # Signal to controller that we want to start Snake
-        self.next_scene = "snake"
-
-    def _request_pet_dash(self):
-        self.next_scene = "pet_dash"
-
-    # ------------------------------------------------------------------
-    # Update & Draw
-    # ------------------------------------------------------------------
     def update(self, dt: float):
         super().update(dt)
-
         self.pet_bob = (self.pet_bob + 0.08) % (2 * math.pi)
         self.pet_sprite.set_bob(self.pet_bob)
         self.pet_sprite.update(dt)
@@ -211,7 +181,6 @@ class MainScene(BaseScene):
             self.update_animation()
 
     def draw(self, surface: pygame.Surface):
-        # Background by location
         loc = self.game_state.pet.location
         if loc == "home":
             bg = (245, 235, 220)
@@ -246,15 +215,13 @@ class MainScene(BaseScene):
         if self.anim_state:
             self._draw_anim_effect(surface)
 
-        # Hint text
         hint = self.tiny_font.render("F/P/C/R • M=Map • Q=Quit", True, (100, 100, 100))
         surface.blit(hint, (15, 455))
 
-    # ------------------------------------------------------------------
-    # Drawing helpers (kept private for now)
-    # ------------------------------------------------------------------
+    # The rest of the drawing methods (_draw_top_stats_bar, _draw_environment, etc.) remain the same as before.
+    # For brevity in this step they are kept inside MainScene.
+
     def _draw_top_stats_bar(self, surface):
-        # (Same implementation as before, kept for brevity in this step)
         section_width = self.width // 5
         bar_height = 52
         needs = self.game_state.pet.needs
@@ -280,7 +247,6 @@ class MainScene(BaseScene):
             value_surf = self.tiny_font.render(f"{value:.0f}", True, (20, 20, 20))
             surface.blit(value_surf, (x + section_width - 30, bar_y + 1))
 
-        # Coins + Seeds section
         x = 4 * section_width
         pygame.draw.rect(surface, (250, 248, 240), (x, 0, section_width, bar_height))
         pygame.draw.line(surface, (180, 160, 140), (x, 0), (x, bar_height), 2)
@@ -292,7 +258,6 @@ class MainScene(BaseScene):
         surface.blit(seeds_text, (x + 10, 28))
 
     def _draw_environment(self, surface, loc):
-        # Simplified version of previous draw_environment
         if loc == "home":
             pygame.draw.rect(surface, (200, 170, 130), (0, 260, self.width, 220))
             pygame.draw.rect(surface, (135, 206, 250), (480, 80, 100, 80), width=5)
@@ -316,7 +281,7 @@ class MainScene(BaseScene):
         elif loc == "gens_garden":
             pygame.draw.rect(surface, (230, 245, 255), (0, 260, self.width, 220))
             pygame.draw.rect(surface, (90, 150, 210), (150, 250, 340, 110), border_radius=6)
-        else:  # arcade
+        else:
             pygame.draw.rect(surface, (50, 45, 70), (0, 260, self.width, 220))
             for x_pos in (120, 400):
                 pygame.draw.rect(surface, (40, 40, 55), (x_pos, 260, 120, 100), border_radius=8)

@@ -2,11 +2,13 @@
 """
 StatsBar - Reusable top stats bar UI component.
 
-Displays Hunger, Happiness, Energy, Cleanliness + Coins/Seeds.
-Can be used by any scene.
+Updated to use draw_progress_bar from ui/common.py
 """
 
 import pygame
+from typing import Tuple
+
+from ui.common import draw_progress_bar
 
 
 class StatsBar:
@@ -18,7 +20,6 @@ class StatsBar:
         self.bar_height = 52
 
     def draw(self, surface, needs, coins: int, total_seeds: int):
-        """Draw the full stats bar."""
         stats = [
             ("Hunger", needs.hunger, (220, 60, 60)),
             ("Happiness", needs.happiness, (46, 139, 87)),
@@ -28,22 +29,24 @@ class StatsBar:
 
         for i, (label, value, color) in enumerate(stats):
             x = i * self.section_width
+
+            # Background section
             pygame.draw.rect(surface, (245, 245, 245), (x, 0, self.section_width, self.bar_height))
             pygame.draw.line(surface, (200, 200, 200), (x, 0), (x, self.bar_height), 1)
 
+            # Label
             label_surf = self.small_font.render(label, True, (20, 20, 20))
             surface.blit(label_surf, (x + 8, 4))
 
-            bar_y = 24
-            bar_width = self.section_width - 16
-            pygame.draw.rect(surface, (180, 180, 180), (x + 8, bar_y, bar_width, 12), border_radius=3)
-            fill_width = int(bar_width * max(0, min(1, value / 100)))
-            pygame.draw.rect(surface, color, (x + 8, bar_y, fill_width, 12), border_radius=3)
+            # Use shared progress bar helper
+            bar_rect = pygame.Rect(x + 8, 24, self.section_width - 16, 12)
+            draw_progress_bar(surface, bar_rect, value, max_value=100, fill_color=color, border_radius=3)
 
+            # Value text
             value_surf = self.tiny_font.render(f"{value:.0f}", True, (20, 20, 20))
-            surface.blit(value_surf, (x + self.section_width - 30, bar_y + 1))
+            surface.blit(value_surf, (x + self.section_width - 30, 25))
 
-        # Coins + Seeds section (5th column)
+        # Coins + Seeds section
         x = 4 * self.section_width
         pygame.draw.rect(surface, (250, 248, 240), (x, 0, self.section_width, self.bar_height))
         pygame.draw.line(surface, (180, 160, 140), (x, 0), (x, self.bar_height), 2)

@@ -1,27 +1,19 @@
 #!/usr/bin/env python3
 """
-OurWorld - Main entry point (thin controller version)
+OurWorld - Thin controller with proper scene management
 
-Architecture:
-- PetSelectionScreen (uses PetSprite)
-- OurWorldPygame acts as thin controller
-- MainScene handles the primary gameplay view
-- Minigames are launched from MainScene signals
-
-This is a major step toward clean scene-based architecture.
+Now supports clean switching between MainScene and ArcadeScene.
 """
 
 import pygame
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core.game_state import GameState
-from minigames import get_minigame
-from sprites.pet_sprite import PetSprite
 from scenes.main_scene import MainScene
+from scenes.arcade_scene import ArcadeScene
 
 WIDTH, HEIGHT = 640, 480
 FPS = 30
@@ -38,7 +30,6 @@ PET_ROSTER = [
 
 
 class PetSelectionScreen:
-    """Pet selection screen (kept mostly as-is from previous refactor)."""
     def __init__(self, screen):
         self.screen = screen
         self.font = pygame.font.SysFont("Arial", 26)
@@ -47,6 +38,7 @@ class PetSelectionScreen:
         self.bob = 0.0
         self.done = False
 
+        from sprites.pet_sprite import PetSprite
         self.pet_sprites = []
         for i, pet_data in enumerate(PET_ROSTER):
             col = i % 3
@@ -107,15 +99,7 @@ class PetSelectionScreen:
 
 class OurWorldPygame:
     """
-    Thin controller / game manager.
-
-    Responsibilities:
-    - Create and manage MainScene
-    - Handle minigame launching
-    - Top-level game loop and quitting
-    - Save on exit
-
-    Most gameplay logic now lives in MainScene.
+    Thin scene manager / controller.
     """
 
     def __init__(self, pet_config):
@@ -127,13 +111,9 @@ class OurWorldPygame:
         self.game_state.pet.name = pet_config["name"]
         self.pet_config = pet_config
 
-        # Create the main gameplay scene
         self.main_scene = MainScene(self.game_state, self.screen, pet_config)
+        self.arcade_scene = None
         self.current_scene = self.main_scene
-
-        # Minigame state
-        self.minigame = None
-        self.minigame_type = None
 
     def run(self):
         running = True
@@ -144,76 +124,28 @@ class OurWorldPygame:
                 if event.type == pygame.QUIT:
                     running = False
                 else:
-                    # Let current scene handle the event
-                    if self.minigame:
-                        if hasattr(self.minigame, 'handle_key') and event.type == pygame.KEYDOWN:
-                            self.minigame.handle_key(event.key)
-                        elif hasattr(self.minigame, 'handle_event'):
-                            self.minigame.handle_event(event)
-                    else:
-                        self.current_scene.handle_event(event)
+                    self.current_scene.handle_event(event)
 
-            # Update
-            if self.minigame:
-                self.minigame.update(dt)
+            self.current_scene.update(dt)
 
-                # Check if minigame ended
-                if getattr(self.minigame, 'game_over', False):
-                    self._handle_minigame_end()
-            else:
-                self.current_scene.update(dt)
+            # === Scene switching logic ===
+            if self.current_scene.next_scene == "arcade":
+                if self.arcade_scene is None:
+                    self.arcade_scene = ArcadeScene(self.game_state, self.screen)
+                self.current_scene = self.arcade_scene
+                self.current_scene.next_scene = None
 
-                # Check if MainScene requested a minigame
-                if self.current_scene.next_scene == "snake":
-                    self._start_minigame("snake")
-                elif self.current_scene.next_scene == "pet_dash":
-                    self._start_minigame("pet_dash")
+            elif self.current_scene.next_scene == "main":
+                self.current_scene = self.main_scene
+                self.current_scene.next_scene = None
+                self.arcade_scene = None  # clean up
 
-            # Draw
-            if self.minigame and hasattr(self.minigame, 'draw'):
-                self.minigame.draw(self.screen)
-            else:
-                self.current_scene.draw(self.screen)
-
+            self.current_scene.draw(self.screen)
             pygame.display.flip()
 
         self.game_state.save()
         pygame.quit()
         sys.exit()
-
-    def _start_minigame(self, game_type: str):
-        self.minigame_type = game_type
-        MinigameClass = get_minigame(game_type)
-
-        if game_type == "snake":
-            self.minigame = MinigameClass(self.screen, self.clock)
-        elif game_type == "pet_dash":
-            self.minigame = MinigameClass(self.screen, self.clock, self.pet_config.get("color"))
-
-        # Reset the request flag
-        self.current_scene.next_scene = None
-
-    def _handle_minigame_end(self):
-        if not self.minigame:
-            return
-
-        score = getattr(self.minigame, 'score', 0)
-
-        if self.minigame_type == "snake":
-            bonus = min(40, score // 3)
-            if bonus > 0:
-                self.game_state.pet.needs.happiness = min(100, self.game_state.pet.needs.happiness + bonus)
-            self.game_state.earn_coins(max(20, score // 2))
-        elif self.minigame_type == "pet_dash":
-            bonus = min(30, score // 4)
-            if bonus > 0:
-                self.game_state.pet.needs.happiness = min(100, self.game_state.pet.needs.happiness + bonus)
-            self.game_state.earn_coins(max(15, score // 3))
-
-        self.minigame = None
-        self.minigame_type = None
-        # Return to main scene
-        self.current_scene.status = "Great job in the arcade!"
 
 
 if __name__ == "__main__":

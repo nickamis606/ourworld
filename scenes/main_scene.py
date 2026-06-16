@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-MainScene - Primary gameplay scene (now using StatsBar, ActionButtons, and ShopUI).
+MainScene - Primary gameplay scene (now using multiple shared UI components).
+
+UI components used:
+- StatsBar
+- ActionButtons
+- ShopUI
+- ContextActions (NEW)
 """
 
 import pygame
@@ -12,7 +18,8 @@ from scenes.base_scene import BaseScene
 from sprites.pet_sprite import PetSprite
 from ui.stats_bar import StatsBar
 from ui.action_buttons import ActionButtons
-from ui.shop_ui import ShopUI   # NEW
+from ui.shop_ui import ShopUI
+from ui.context_actions import ContextActions   # NEW
 
 
 class MainScene(BaseScene):
@@ -31,6 +38,7 @@ class MainScene(BaseScene):
         self.stats_bar = StatsBar(self.width, self.small_font, self.tiny_font)
         self.action_buttons = ActionButtons(y=415, small_font=self.small_font)
         self.shop_ui = ShopUI(self.small_font)
+        self.context_actions = ContextActions(self.small_font)
 
         self.pet_sprite = PetSprite(pet_config, size=1.3, pos=(340, 210))
         self.pet_bob = 0.0
@@ -66,7 +74,7 @@ class MainScene(BaseScene):
             self._handle_map_click(pos)
             return
 
-        # Action buttons
+        # Main action buttons
         btn_rects = self.action_buttons.get_all_rects()
         if btn_rects["feed"].collidepoint(pos):
             self.start_action("feed")
@@ -81,13 +89,13 @@ class MainScene(BaseScene):
 
         loc = self.game_state.pet.location
 
-        # Arcade
+        # Arcade scene switch
         if loc == "arcade":
             if pygame.Rect(450, 280, 80, 45).collidepoint(pos) or pygame.Rect(540, 280, 80, 45).collidepoint(pos):
                 self.next_scene = "arcade"
                 return
 
-        # Use ShopUI for shop clicks
+        # ShopUI
         if loc in ("sweeties_candy_shop", "gens_garden"):
             item = self.shop_ui.get_clicked_item(pos, loc)
             if item:
@@ -97,29 +105,28 @@ class MainScene(BaseScene):
                     self.anim_state = {"type": "feed", "start": time.time()}
                 return
 
-        # Backyard planting / harvest
-        if loc == "backyard":
-            if pygame.Rect(30, 70, 180, 40).collidepoint(pos):
+        # ContextActions (backyard planting/harvest + home decorate)
+        action = self.context_actions.get_clicked_action(pos, loc)
+        if action:
+            if action == "plant_flower":
                 if self.game_state.pet.inventory.get("flower_seeds", 0) > 0:
                     result = self.game_state.plant_seed("flower_seeds")
                     self.status = result.get("msg", "")
                     if result.get("success"):
                         self.anim_state = {"type": "plant", "start": time.time()}
-            elif pygame.Rect(30, 120, 180, 40).collidepoint(pos):
+            elif action == "plant_sunflower":
                 if self.game_state.pet.inventory.get("sunflower_seeds", 0) > 0:
                     result = self.game_state.plant_seed("sunflower_seeds")
                     self.status = result.get("msg", "")
                     if result.get("success"):
                         self.anim_state = {"type": "plant", "start": time.time()}
-            elif pygame.Rect(450, 70, 160, 40).collidepoint(pos):
+            elif action == "harvest":
                 result = self.game_state.harvest_plant()
                 self.status = result.get("msg", "")
-
-        # Home decorate
-        elif loc == "home":
-            if pygame.Rect(30, 70, 200, 40).collidepoint(pos):
+            elif action == "decorate":
                 result = self.game_state.decorate_home()
                 self.status = result.get("msg", "")
+            return
 
     def _handle_map_click(self, pos: tuple):
         locations = {
@@ -200,12 +207,13 @@ class MainScene(BaseScene):
         self._draw_status(surface)
         self.action_buttons.draw(surface, anim_state_active=bool(self.anim_state))
 
-        # Use ShopUI
+        # ShopUI
         self.shop_ui.draw(surface, loc)
 
-        self._draw_backyard_plant_ui(surface)
-        self._draw_harvest_button(surface)
-        self._draw_decorate_button(surface)
+        # ContextActions (backyard + home)
+        has_mature = any(p.get("stage", 0) >= 3 for p in self.game_state.pet.garden)
+        self.context_actions.draw(surface, loc, self.game_state.pet.inventory, has_mature)
+
         self._draw_arcade_games(surface)
 
         if self.map_mode:
@@ -217,7 +225,7 @@ class MainScene(BaseScene):
         hint = self.tiny_font.render("F/P/C/R • M=Map • Q=Quit", True, (100, 100, 100))
         surface.blit(hint, (15, 455))
 
-    # Remaining drawing methods kept for now
+    # Remaining drawing methods (environment, mood, status, arcade, map, animations)
     def _draw_environment(self, surface, loc):
         if loc == "home":
             pygame.draw.rect(surface, (200, 170, 130), (0, 260, self.width, 220))
@@ -296,42 +304,6 @@ class MainScene(BaseScene):
     def _draw_status(self, surface):
         txt = self.small_font.render(self.status, True, (20, 20, 20))
         surface.blit(txt, (15, 375))
-
-    def _draw_backyard_plant_ui(self, surface):
-        if self.game_state.pet.location != "backyard" or self.map_mode:
-            return
-        inv = self.game_state.pet.inventory
-        if inv.get("flower_seeds", 0) > 0:
-            btn = pygame.Rect(30, 70, 180, 40)
-            pygame.draw.rect(surface, (180, 230, 180), btn, border_radius=8)
-            pygame.draw.rect(surface, (40, 140, 60), btn, width=2, border_radius=8)
-            surface.blit(self.small_font.render("Plant Flower Seeds", True, (30, 100, 50)), (40, 80))
-        if inv.get("sunflower_seeds", 0) > 0:
-            btn = pygame.Rect(30, 120, 180, 40)
-            pygame.draw.rect(surface, (180, 230, 180), btn, border_radius=8)
-            pygame.draw.rect(surface, (40, 140, 60), btn, width=2, border_radius=8)
-            surface.blit(self.small_font.render("Plant Sunflower Seeds", True, (30, 100, 50)), (40, 130))
-
-    def _draw_harvest_button(self, surface):
-        if self.game_state.pet.location != "backyard" or self.map_mode:
-            return
-        mature_count = sum(1 for p in self.game_state.pet.garden if p.get("stage", 0) >= 3)
-        if mature_count == 0:
-            return
-        btn = pygame.Rect(450, 70, 160, 40)
-        pygame.draw.rect(surface, (255, 200, 150), btn, border_radius=8)
-        pygame.draw.rect(surface, (200, 120, 50), btn, width=2, border_radius=8)
-        surface.blit(self.small_font.render("Harvest Flower", True, (150, 80, 30)), (465, 80))
-
-    def _draw_decorate_button(self, surface):
-        if self.game_state.pet.location != "home" or self.map_mode:
-            return
-        if self.game_state.pet.inventory.get("flowers", 0) < 5:
-            return
-        btn = pygame.Rect(30, 70, 200, 40)
-        pygame.draw.rect(surface, (255, 220, 240), btn, border_radius=8)
-        pygame.draw.rect(surface, (200, 80, 150), btn, width=2, border_radius=8)
-        surface.blit(self.small_font.render("Decorate Home (5)", True, (180, 60, 130)), (40, 80))
 
     def _draw_arcade_games(self, surface):
         if self.game_state.pet.location != "arcade" or self.map_mode:

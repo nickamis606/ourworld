@@ -2,14 +2,13 @@
 """
 ActionButtons - Reusable bottom action button bar for OurWorld.
 
-Provides the standard 5 buttons:
-- Feed, Play, Clean, Rest, Map
-
-Can be reused across scenes.
+Updated to use helpers from ui/common.py
 """
 
 import pygame
 from typing import Dict
+
+from ui.common import draw_rounded_rect
 
 
 class ActionButtons:
@@ -17,7 +16,6 @@ class ActionButtons:
         self.y = y
         self.small_font = small_font or pygame.font.SysFont("Arial", 14)
 
-        # Button definitions: name -> (rect, color, label)
         self.buttons: Dict[str, dict] = {
             "feed": {
                 "rect": pygame.Rect(25, y, 90, 36),
@@ -47,26 +45,21 @@ class ActionButtons:
         }
 
     def draw(self, surface, anim_state_active: bool = False):
-        """Draw all action buttons."""
         for name, btn in self.buttons.items():
             rect = btn["rect"]
             color = btn["color"]
             label = btn["label"]
 
-            pygame.draw.rect(surface, color, rect, border_radius=8)
+            draw_rounded_rect(surface, rect, color, radius=8)
 
-            # Dim effect when an animation is playing
             if anim_state_active and name != "map":
-                pygame.draw.rect(surface, (90, 90, 90), rect, width=3, border_radius=8)
+                draw_rounded_rect(surface, rect, (90, 90, 90), radius=8, width=3)
 
-            text_color = (255, 255, 255)
-            text_surf = self.small_font.render(label, True, text_color)
+            text_surf = self.small_font.render(label, True, (255, 255, 255))
             surface.blit(text_surf, (rect.x + 8, rect.y + 8))
 
     def get_rect(self, name: str) -> pygame.Rect:
-        """Return the rect for a specific button (for click detection)."""
         return self.buttons[name]["rect"]
 
     def get_all_rects(self) -> Dict[str, pygame.Rect]:
-        """Return all button rects."""
         return {name: btn["rect"] for name, btn in self.buttons.items()}

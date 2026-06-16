@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MainScene - Primary gameplay scene (now using shared UI components for StatsBar and ActionButtons).
+MainScene - Primary gameplay scene (now using StatsBar, ActionButtons, and ShopUI).
 """
 
 import pygame
@@ -11,7 +11,8 @@ from typing import Optional, Any
 from scenes.base_scene import BaseScene
 from sprites.pet_sprite import PetSprite
 from ui.stats_bar import StatsBar
-from ui.action_buttons import ActionButtons   # NEW
+from ui.action_buttons import ActionButtons
+from ui.shop_ui import ShopUI   # NEW
 
 
 class MainScene(BaseScene):
@@ -29,6 +30,7 @@ class MainScene(BaseScene):
         # Shared UI components
         self.stats_bar = StatsBar(self.width, self.small_font, self.tiny_font)
         self.action_buttons = ActionButtons(y=415, small_font=self.small_font)
+        self.shop_ui = ShopUI(self.small_font)
 
         self.pet_sprite = PetSprite(pet_config, size=1.3, pos=(340, 210))
         self.pet_bob = 0.0
@@ -64,9 +66,8 @@ class MainScene(BaseScene):
             self._handle_map_click(pos)
             return
 
-        # Use ActionButtons for click detection
+        # Action buttons
         btn_rects = self.action_buttons.get_all_rects()
-
         if btn_rects["feed"].collidepoint(pos):
             self.start_action("feed")
         elif btn_rects["play"].collidepoint(pos):
@@ -80,33 +81,24 @@ class MainScene(BaseScene):
 
         loc = self.game_state.pet.location
 
+        # Arcade
         if loc == "arcade":
             if pygame.Rect(450, 280, 80, 45).collidepoint(pos) or pygame.Rect(540, 280, 80, 45).collidepoint(pos):
                 self.next_scene = "arcade"
                 return
 
-        # Location-specific interactions (unchanged for now)
-        if loc == "sweeties_candy_shop":
-            if pygame.Rect(450, 280, 160, 45).collidepoint(pos):
-                result = self.game_state.buy_item("sweeties_candy_shop", "lollipop")
+        # Use ShopUI for shop clicks
+        if loc in ("sweeties_candy_shop", "gens_garden"):
+            item = self.shop_ui.get_clicked_item(pos, loc)
+            if item:
+                result = self.game_state.buy_item(loc, item)
                 self.status = result.get("msg", "")
-                if result.get("success"):
+                if result.get("success") and item in ("lollipop", "candy_apple"):
                     self.anim_state = {"type": "feed", "start": time.time()}
-            elif pygame.Rect(450, 335, 160, 45).collidepoint(pos):
-                result = self.game_state.buy_item("sweeties_candy_shop", "candy_apple")
-                self.status = result.get("msg", "")
-                if result.get("success"):
-                    self.anim_state = {"type": "feed", "start": time.time()}
+                return
 
-        elif loc == "gens_garden":
-            if pygame.Rect(450, 280, 160, 45).collidepoint(pos):
-                result = self.game_state.buy_item("gens_garden", "flower_seeds")
-                self.status = result.get("msg", "")
-            elif pygame.Rect(450, 335, 160, 45).collidepoint(pos):
-                result = self.game_state.buy_item("gens_garden", "sunflower_seeds")
-                self.status = result.get("msg", "")
-
-        elif loc == "backyard":
+        # Backyard planting / harvest
+        if loc == "backyard":
             if pygame.Rect(30, 70, 180, 40).collidepoint(pos):
                 if self.game_state.pet.inventory.get("flower_seeds", 0) > 0:
                     result = self.game_state.plant_seed("flower_seeds")
@@ -123,6 +115,7 @@ class MainScene(BaseScene):
                 result = self.game_state.harvest_plant()
                 self.status = result.get("msg", "")
 
+        # Home decorate
         elif loc == "home":
             if pygame.Rect(30, 70, 200, 40).collidepoint(pos):
                 result = self.game_state.decorate_home()
@@ -196,7 +189,6 @@ class MainScene(BaseScene):
             bg = (210, 200, 230)
         surface.fill(bg)
 
-        # Shared UI components
         needs = self.game_state.pet.needs
         total_seeds = (self.game_state.pet.inventory.get("flower_seeds", 0) +
                        self.game_state.pet.inventory.get("sunflower_seeds", 0))
@@ -206,11 +198,11 @@ class MainScene(BaseScene):
         self.pet_sprite.draw(surface)
         self._draw_mood(surface)
         self._draw_status(surface)
-
-        # Use shared ActionButtons
         self.action_buttons.draw(surface, anim_state_active=bool(self.anim_state))
 
-        self._draw_shop_ui(surface)
+        # Use ShopUI
+        self.shop_ui.draw(surface, loc)
+
         self._draw_backyard_plant_ui(surface)
         self._draw_harvest_button(surface)
         self._draw_decorate_button(surface)
@@ -225,7 +217,7 @@ class MainScene(BaseScene):
         hint = self.tiny_font.render("F/P/C/R • M=Map • Q=Quit", True, (100, 100, 100))
         surface.blit(hint, (15, 455))
 
-    # The remaining private drawing methods stay for now (can be further extracted later)
+    # Remaining drawing methods kept for now
     def _draw_environment(self, surface, loc):
         if loc == "home":
             pygame.draw.rect(surface, (200, 170, 130), (0, 260, self.width, 220))
@@ -304,27 +296,6 @@ class MainScene(BaseScene):
     def _draw_status(self, surface):
         txt = self.small_font.render(self.status, True, (20, 20, 20))
         surface.blit(txt, (15, 375))
-
-    def _draw_shop_ui(self, surface):
-        if self.map_mode:
-            return
-        loc = self.game_state.pet.location
-        if loc == "sweeties_candy_shop":
-            btn1 = pygame.Rect(450, 280, 160, 45)
-            pygame.draw.rect(surface, (255, 200, 210), btn1, border_radius=8)
-            pygame.draw.rect(surface, (200, 50, 70), btn1, width=2, border_radius=8)
-            surface.blit(self.small_font.render("Buy Lollipop (10)", True, (200, 50, 70)), (460, 292))
-
-            btn2 = pygame.Rect(450, 335, 160, 45)
-            pygame.draw.rect(surface, (255, 200, 210), btn2, border_radius=8)
-            pygame.draw.rect(surface, (200, 50, 70), btn2, width=2, border_radius=8)
-            surface.blit(self.small_font.render("Buy Candy Apple (25)", True, (200, 50, 70)), (460, 347))
-
-        elif loc == "gens_garden":
-            btn1 = pygame.Rect(450, 280, 160, 45)
-            pygame.draw.rect(surface, (200, 230, 255), btn1, border_radius=8)
-            pygame.draw.rect(surface, (90, 150, 210), btn1, width=2, border_radius=8)
-            surface.blit(self.small_font.render("Buy Flower Seeds (12)", True, (90, 150, 210)), (460, 292))
 
     def _draw_backyard_plant_ui(self, surface):
         if self.game_state.pet.location != "backyard" or self.map_mode:

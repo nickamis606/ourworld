@@ -1,0 +1,1 @@
+# OurWorld Sprites package

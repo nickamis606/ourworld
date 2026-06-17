@@ -232,7 +232,7 @@ class PetSprite(pygame.sprite.Sprite):
         pygame.draw.ellipse(surface, (255, 255, 255), (cx - int(13*s), cy - int(20*s), int(11*s), int(10*s)))
         pygame.draw.ellipse(surface, (255, 255, 255), (cx + int(2*s), cy - int(20*s), int(11*s), int(10*s)))
         pygame.draw.ellipse(surface, (90, 130, 255), (cx - int(9*s), cy - int(19*s), int(5*s), int(5*s)))
-        pygame.draw.ellipse(surface, (90, 130, 255), (cx + int(6*s), cy - int(19*s), int(5*s), int(5*s), int(5*s)))
+        pygame.draw.ellipse(surface, (90, 130, 255), (cx + int(6*s), cy - int(19*s), int(5*s), int(5*s)))
         pygame.draw.ellipse(surface, (20, 20, 20), (cx - int(7*s), cy - int(17*s), int(3*s), int(3*s)))
         pygame.draw.ellipse(surface, (20, 20, 20), (cx + int(9*s), cy - int(17*s), int(3*s), int(3*s)))
         pygame.draw.arc(surface, (60, 60, 60), (cx - int(6*s), cy - int(8*s), int(12*s), int(7*s)), 0, math.pi, int(2*s))

@@ -54,11 +54,9 @@ class PetSprite(pygame.sprite.Sprite):
         self.sprite_image = self._load_sprite()
 
         if self.sprite_image:
-            # Use sprite dimensions
             w, h = self.sprite_image.get_size()
             self.image = pygame.Surface((w, h), pygame.SRCALPHA)
         else:
-            # Fallback procedural size
             base_size = int(80 * self.size_scale)
             self.image = pygame.Surface((base_size, base_size + 20), pygame.SRCALPHA)
 
@@ -71,21 +69,31 @@ class PetSprite(pygame.sprite.Sprite):
         """Try to load a sprite from assets/pets/. Returns None if not found."""
         sprite_name = self.PET_SPRITE_NAMES.get(self.pet_id)
         if not sprite_name:
+            print(f"[PetSprite] No sprite name mapped for pet_id={self.pet_id}")
             return None
 
-        # Look for assets/pets/<name>.png relative to project root
         possible_paths = [
             Path("assets/pets") / f"{sprite_name}.png",
             Path(__file__).parent.parent / "assets/pets" / f"{sprite_name}.png",
+            Path("assets/pets") / f"{sprite_name}.jpg",  # fallback
+            Path(__file__).parent.parent / "assets/pets" / f"{sprite_name}.jpg",
         ]
 
         for path in possible_paths:
             if path.exists():
                 try:
                     img = pygame.image.load(str(path)).convert_alpha()
+                    print(f"[PetSprite] Successfully loaded sprite: {path}")
                     return img
-                except Exception:
-                    return None
+                except Exception as e:
+                    print(f"[PetSprite] Failed to load {path}: {e}")
+                    continue
+
+        # Debug: show what we tried
+        print(f"[PetSprite] WARNING: Could not find sprite for '{sprite_name}' (pet_id={self.pet_id})")
+        print(f"[PetSprite] Tried these paths:")
+        for p in possible_paths:
+            print(f"   - {p} (exists={p.exists()})")
         return None
 
     def set_position(self, x: int, y: int):
@@ -111,7 +119,6 @@ class PetSprite(pygame.sprite.Sprite):
         scale = self.size_scale
 
         if self.sprite_image:
-            # Draw sprite (scaled)
             scaled = pygame.transform.smoothscale(
                 self.sprite_image,
                 (int(self.sprite_image.get_width() * scale),
@@ -120,23 +127,19 @@ class PetSprite(pygame.sprite.Sprite):
             sprite_rect = scaled.get_rect(center=(cx, draw_y))
             surface.blit(scaled, sprite_rect)
         else:
-            # Fallback to procedural drawing
             self._draw_pet_body(surface, cx, draw_y, scale)
 
-        # Draw name below pet
         if self.name:
             font = pygame.font.SysFont("Arial", int(13 * scale))
             name_surf = font.render(self.name, True, (20, 20, 20))
             surface.blit(name_surf, (cx - name_surf.get_width() // 2, draw_y + int(42 * scale)))
 
-        # Selection highlight
         if self.is_selected:
             highlight_rect = pygame.Rect(cx - int(45 * scale), draw_y - int(55 * scale),
                                          int(90 * scale), int(105 * scale))
             pygame.draw.rect(surface, (255, 215, 0), highlight_rect, width=4, border_radius=12)
 
     def _draw_pet_body(self, surface, cx, cy, scale):
-        """Fallback procedural drawing (original basic version)."""
         pid = self.pet_id
         color = self.base_color
 
@@ -159,7 +162,6 @@ class PetSprite(pygame.sprite.Sprite):
             r = int(30 * scale)
             pygame.draw.circle(surface, color, (cx, cy), r)
 
-    # Keep the original procedural methods below for fallback (unchanged for now)
     def _draw_round_pet(self, surface, cx, cy, color, scale, ear_color=None, cheek_color=None, accent_color=None):
         s = scale
         pygame.draw.ellipse(surface, color, (cx - int(34*s), cy - int(10*s), int(68*s), int(62*s)))
@@ -229,8 +231,6 @@ class PetSprite(pygame.sprite.Sprite):
         ])
         pygame.draw.ellipse(surface, color, (cx - int(22*s), cy - int(40*s), int(12*s), int(12*s)))
         pygame.draw.ellipse(surface, color, (cx + int(10*s), cy - int(40*s), int(12*s), int(12*s)))
-        pygame.draw.ellipse(surface, (255, 255, 255), (cx - int(13*s), cy - int(20*s), int(11*s), int(10*s)))
-        pygame.draw.ellipse(surface, (255, 255, 255), (cx + int(2*s), cy - int(20*s), int(11*s), int(10*s)))
         pygame.draw.ellipse(surface, (90, 130, 255), (cx - int(9*s), cy - int(19*s), int(5*s), int(5*s)))
         pygame.draw.ellipse(surface, (90, 130, 255), (cx + int(6*s), cy - int(19*s), int(5*s), int(5*s)))
         pygame.draw.ellipse(surface, (20, 20, 20), (cx - int(7*s), cy - int(17*s), int(3*s), int(3*s)))

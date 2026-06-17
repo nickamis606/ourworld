@@ -7,9 +7,9 @@ Now supports both:
 - Procedural fallback drawing (if no sprite file exists)
 
 Place optimized sprites in: assets/pets/<lowercase_name>.png
-Example: assets/pets/bubbles.png, assets/pets/milo.png, etc.
 
-Recommended sprite size: 48x48 or 64x64 with transparency.
+When a sprite is loaded, it is automatically normalized to a consistent
+base size (~120px tall) so the `size=` parameter behaves predictably.
 """
 
 import pygame
@@ -23,6 +23,7 @@ class PetSprite(pygame.sprite.Sprite):
     A reusable sprite representing one of the OurWorld pets.
 
     Supports sprite assets + procedural fallback.
+    Loaded sprites are normalized to a sensible base size.
     """
 
     # Mapping from pet name (lowercase) to filename
@@ -34,6 +35,8 @@ class PetSprite(pygame.sprite.Sprite):
         4: "pip",
         5: "nova",
     }
+
+    TARGET_HEIGHT = 120   # Normalized height for loaded sprites
 
     def __init__(self, pet_config: Dict[str, Any], size: float = 1.0, pos: tuple = (0, 0),
                  pet_state: Optional[Any] = None):
@@ -69,13 +72,12 @@ class PetSprite(pygame.sprite.Sprite):
         """Try to load a sprite from assets/pets/. Returns None if not found."""
         sprite_name = self.PET_SPRITE_NAMES.get(self.pet_id)
         if not sprite_name:
-            print(f"[PetSprite] No sprite name mapped for pet_id={self.pet_id}")
             return None
 
         possible_paths = [
             Path("assets/pets") / f"{sprite_name}.png",
             Path(__file__).parent.parent / "assets/pets" / f"{sprite_name}.png",
-            Path("assets/pets") / f"{sprite_name}.jpg",  # fallback
+            Path("assets/pets") / f"{sprite_name}.jpg",
             Path(__file__).parent.parent / "assets/pets" / f"{sprite_name}.jpg",
         ]
 
@@ -83,17 +85,20 @@ class PetSprite(pygame.sprite.Sprite):
             if path.exists():
                 try:
                     img = pygame.image.load(str(path)).convert_alpha()
-                    print(f"[PetSprite] Successfully loaded sprite: {path}")
+
+                    # Normalize to consistent target height
+                    if img.get_height() != self.TARGET_HEIGHT:
+                        ratio = self.TARGET_HEIGHT / img.get_height()
+                        new_width = int(img.get_width() * ratio)
+                        img = pygame.transform.smoothscale(img, (new_width, self.TARGET_HEIGHT))
+
+                    print(f"[PetSprite] Loaded and normalized: {path.name} -> {img.get_size()}")
                     return img
                 except Exception as e:
                     print(f"[PetSprite] Failed to load {path}: {e}")
                     continue
 
-        # Debug: show what we tried
-        print(f"[PetSprite] WARNING: Could not find sprite for '{sprite_name}' (pet_id={self.pet_id})")
-        print(f"[PetSprite] Tried these paths:")
-        for p in possible_paths:
-            print(f"   - {p} (exists={p.exists()})")
+        print(f"[PetSprite] WARNING: No sprite found for '{sprite_name}' (pet_id={self.pet_id})")
         return None
 
     def set_position(self, x: int, y: int):
@@ -268,7 +273,7 @@ if __name__ == "__main__":
     for i, cfg in enumerate(test_pets):
         x = 100 + (i % 3) * 220
         y = 150 + (i // 3) * 220
-        ps = PetSprite(cfg, size=1.5, pos=(x, y))
+        ps = PetSprite(cfg, size=1.0, pos=(x, y))
         ps.set_selected(i == 0)
         sprites.append(ps)
 

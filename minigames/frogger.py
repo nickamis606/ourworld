@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 OurWorld Arcade - Frogger (polished throwback version)
-Playable speeds + significantly better graphics. No shortcuts.
+Playable speeds + significantly better graphics.
 """
 
 import pygame
@@ -23,6 +23,7 @@ ROAD_LINE = (230, 230, 230)
 WATER = (20, 60, 115)
 WATER_LINE = (50, 110, 160)
 CAR_COLORS = [(195, 35, 35), (35, 130, 195), (215, 165, 35), (155, 45, 175)]
+CAR_CABIN = (55, 55, 65)   # <-- Added back
 LOG_BROWN = (105, 65, 30)
 LOG_LIGHT = (145, 100, 55)
 FROG_GREEN = (65, 185, 65)
@@ -84,9 +85,9 @@ class FroggerGame(MinigameBase):
         self.show_instructions = True
         self.instruction_timer = 0
 
-        # Playable speeds (bottom lane slowed down)
+        # Playable speeds
         self.lanes = [
-            {'y': 18, 'speed': 0.95, 'dir': 1,  'is_water': False},   # bottom road - slowed
+            {'y': 18, 'speed': 0.95, 'dir': 1,  'is_water': False},
             {'y': 16, 'speed': 0.75, 'dir': -1, 'is_water': False},
             {'y': 14, 'speed': 1.05, 'dir': 1,  'is_water': False},
             {'y': 10, 'speed': 0.65, 'dir': -1, 'is_water': True},
@@ -222,76 +223,61 @@ class FroggerGame(MinigameBase):
         target = screen or self.screen
         target.fill(BG)
 
-        # === Background lanes with detail ===
         for y in range(GRID_ROWS):
             cy = y * CELL_SIZE
 
-            if y >= 17:  # Grass
+            if y >= 17:
                 pygame.draw.rect(target, GRASS_DARK, (0, cy, SCREEN_WIDTH, CELL_SIZE))
                 for gx in range(0, SCREEN_WIDTH, 28):
                     pygame.draw.line(target, GRASS_LIGHT, (gx, cy + 3), (gx + 12, cy + CELL_SIZE - 4), 2)
 
-            elif y in [18, 16, 14]:  # Road
+            elif y in [18, 16, 14]:
                 pygame.draw.rect(target, ROAD, (0, cy, SCREEN_WIDTH, CELL_SIZE))
-                # Double dashed lines
                 for gx in range(0, SCREEN_WIDTH, 45):
                     pygame.draw.rect(target, ROAD_LINE, (gx, cy + 6, 22, 2))
                     pygame.draw.rect(target, ROAD_LINE, (gx, cy + CELL_SIZE - 8, 22, 2))
 
-            elif y in [10, 8, 6]:  # Water
+            elif y in [10, 8, 6]:
                 pygame.draw.rect(target, WATER, (0, cy, SCREEN_WIDTH, CELL_SIZE))
                 offset = (pygame.time.get_ticks() // 70) % 35
                 for gx in range(-35, SCREEN_WIDTH, 35):
                     pygame.draw.line(target, WATER_LINE, (gx + offset, cy + 5), (gx + 20 + offset, cy + 5), 2)
                     pygame.draw.line(target, WATER_LINE, (gx + offset + 8, cy + CELL_SIZE - 6), (gx + 28 + offset + 8, cy + CELL_SIZE - 6), 2)
 
-            elif y <= 2:  # Top safe zone
+            elif y <= 2:
                 pygame.draw.rect(target, SAFE, (0, cy, SCREEN_WIDTH, CELL_SIZE))
-                # Simple lilypad markers
                 for gx in range(40, SCREEN_WIDTH - 40, 80):
                     pygame.draw.ellipse(target, (20, 70, 20), (gx, cy + 4, 28, 12))
 
-        # === Cars (detailed) ===
         for car in self.cars:
             x = int(car['x'] * CELL_SIZE)
             y = car['y'] * CELL_SIZE + 2
             w = car['width'] * CELL_SIZE - 4
-            # Main body
             pygame.draw.rect(target, car['color'], (x, y, w, CELL_SIZE - 6), border_radius=5)
-            # Cabin
             pygame.draw.rect(target, CAR_CABIN, (x + 5, y + 4, w - 10, CELL_SIZE - 14), border_radius=3)
-            # Wheels
             pygame.draw.ellipse(target, (25, 25, 25), (x + 3, y + CELL_SIZE - 7, 7, 6))
             pygame.draw.ellipse(target, (25, 25, 25), (x + w - 10, y + CELL_SIZE - 7, 7, 6))
 
-        # === Logs (detailed) ===
         for log in self.logs:
             x = int(log['x'] * CELL_SIZE)
             y = log['y'] * CELL_SIZE + 3
             w = log['width'] * CELL_SIZE - 6
             pygame.draw.rect(target, LOG_BROWN, (x, y, w, CELL_SIZE - 8), border_radius=6)
-            # Bark texture
             for sx in range(6, w - 6, 14):
                 pygame.draw.line(target, LOG_LIGHT, (x + sx, y + 3), (x + sx, y + CELL_SIZE - 11), 2)
 
-        # === Frog (detailed) ===
         fx = self.frog_x * CELL_SIZE + 1
         fy = self.frog_y * CELL_SIZE + 1
-        # Body
         pygame.draw.ellipse(target, FROG_GREEN, (fx + 2, fy + 6, CELL_SIZE - 4, CELL_SIZE - 10))
-        # Head
         pygame.draw.ellipse(target, FROG_GREEN, (fx + 5, fy + 1, CELL_SIZE - 10, CELL_SIZE - 6))
         pygame.draw.ellipse(target, FROG_DARK, (fx + 5, fy + 1, CELL_SIZE - 10, CELL_SIZE - 6), 2)
-        # Eyes
         pygame.draw.circle(target, FROG_EYE, (fx + 9, fy + 5), 4)
         pygame.draw.circle(target, FROG_EYE, (fx + 14, fy + 5), 4)
         pygame.draw.circle(target, (20, 20, 20), (fx + 10, fy + 5), 2)
         pygame.draw.circle(target, (20, 20, 20), (fx + 15, fy + 5), 2)
-        # Simple legs hint
         pygame.draw.line(target, FROG_DARK, (fx + 4, fy + CELL_SIZE - 5), (fx + 8, fy + CELL_SIZE - 2), 2)
         pygame.draw.line(target, FROG_DARK, (fx + CELL_SIZE - 6, fy + CELL_SIZE - 5), (fx + CELL_SIZE - 10, fy + CELL_SIZE - 2), 2)
 
-        # UI
         target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT), (12, 8))
         target.blit(self.small_font.render(f"LIVES: {self.lives}", True, TEXT), (12, 36))
         target.blit(self.small_font.render("OURWORLD ARCADE • FROGGER", True, ACCENT), (SCREEN_WIDTH - 250, 10))

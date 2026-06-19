@@ -2,11 +2,11 @@
 """
 ActionAnimator - Reusable Pygame animation system for care actions.
 
-Improved with better visuals, new effects, longer duration, and more satisfying effects.
+Robust dt-based timing (no wall-clock time.time() dependency) so animations
+run smoothly at any FPS and don't "freeze" or jump.
 """
 
 import pygame
-import time
 import math
 from typing import Optional
 
@@ -30,7 +30,7 @@ class ActionAnimator:
     def __init__(self):
         self.is_active = False
         self.action_type: Optional[str] = None
-        self.start_time = 0.0
+        self.elapsed = 0.0
         self.duration = 1.3
         self.progress = 0.0
 
@@ -38,20 +38,21 @@ class ActionAnimator:
         """Start a new action animation."""
         self.is_active = True
         self.action_type = action_type.lower()
-        self.start_time = time.time()
+        self.elapsed = 0.0
         self.progress = 0.0
 
     def update(self, dt: float):
-        """Update animation state. Call every frame with delta time."""
+        """Update animation state using delta time (robust for game loops)."""
         if not self.is_active:
             return
 
-        elapsed = time.time() - self.start_time
-        self.progress = min(elapsed / self.duration, 1.0)
+        self.elapsed += dt
+        self.progress = min(self.elapsed / self.duration, 1.0)
 
         if self.progress >= 1.0:
             self.is_active = False
             self.action_type = None
+            self.elapsed = 0.0
 
     def draw(self, surface: pygame.Surface, cx: int, cy: int):
         """Draw the current animation effect centered at (cx, cy)."""
@@ -170,10 +171,8 @@ if __name__ == "__main__":
     animator = ActionAnimator()
 
     running = True
-    last_time = time.time()
     while running:
-        dt = time.time() - last_time
-        last_time = time.time()
+        dt = clock.tick(60) / 1000.0
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -189,6 +188,5 @@ if __name__ == "__main__":
         screen.fill((245, 235, 220))
         animator.draw(screen, 300, 200)
         pygame.display.flip()
-        clock.tick(60)
 
     pygame.quit()

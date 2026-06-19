@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 OurWorld Arcade - Frogger
-Based on proven patterns from popular open source Pygame Frogger implementations.
-Logs carry the frog correctly in their movement direction.
+Clean implementation based on proven patterns from popular open-source Pygame Frogger games
+(adapted from common working structures in repos like rhrlima/frogger and TokyoEdtech-style examples).
+Logs carry the frog correctly.
 """
 
 import pygame
@@ -197,7 +198,7 @@ class FroggerGame(MinigameBase):
                 self._lose_life()
                 return
 
-        # Water - reliable log carrying (standard pattern from working open source Frogger clones)
+        # Water - reliable log carrying (standard working pattern)
         lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
 
         if lane and lane.get('is_water', False):
@@ -206,10 +207,10 @@ class FroggerGame(MinigameBase):
                 if log['y'] == self.frog_y:
                     log_left = log['x']
                     log_right = log['x'] + log['width']
-                    if log_left - 0.3 <= self.frog_x < log_right + 0.3:
+                    if log_left - 0.25 <= self.frog_x < log_right + 0.25:
                         on_log = True
-                        # Carry exactly with the log's speed and direction (classic behavior)
-                        self.frog_x += log['speed'] * log['dir'] * 0.7
+                        # Carry the frog with the log (classic behavior)
+                        self.frog_x += log['speed'] * log['dir'] * 0.65
                         self.frog_x = max(0, min(GRID_COLS - 1, int(round(self.frog_x))))
                         break
 

@@ -3,6 +3,7 @@
 OurWorld - Thin controller with proper scene management
 
 Now supports clean switching between MainScene and ArcadeScene.
+Uses on_enter/on_exit lifecycle to prevent state leakage (map staying visible, etc).
 """
 
 import pygame
@@ -100,6 +101,12 @@ class PetSelectionScreen:
 class OurWorldPygame:
     """
     Thin scene manager / controller.
+
+    Responsibilities:
+    - Owns the scene instances (reuses MainScene for performance)
+    - Handles switching via next_scene flag
+    - Calls on_enter/on_exit lifecycle so scenes can reset transient state
+      (prevents bugs like map staying visible when returning from Arcade)
     """
 
     def __init__(self, pet_config):
@@ -114,6 +121,8 @@ class OurWorldPygame:
         self.main_scene = MainScene(self.game_state, self.screen, pet_config)
         self.arcade_scene = None
         self.current_scene = self.main_scene
+        # Initial enter
+        self.current_scene.on_enter()
 
     def run(self):
         running = True
@@ -128,17 +137,29 @@ class OurWorldPygame:
 
             self.current_scene.update(dt)
 
-            # === Scene switching logic ===
-            if self.current_scene.next_scene == "arcade":
+            # === Scene switching logic with lifecycle ===
+            next_name = getattr(self.current_scene, 'next_scene', None)
+
+            if next_name == "arcade":
+                old_scene = self.current_scene
                 if self.arcade_scene is None:
                     self.arcade_scene = ArcadeScene(self.game_state, self.screen)
                 self.current_scene = self.arcade_scene
+
+                old_scene.next_scene = None
+                old_scene.on_exit()
+                self.current_scene.on_enter()
                 self.current_scene.next_scene = None
 
-            elif self.current_scene.next_scene == "main":
+            elif next_name == "main":
+                old_scene = self.current_scene
                 self.current_scene = self.main_scene
+
+                old_scene.next_scene = None
+                old_scene.on_exit()
+                self.current_scene.on_enter()
                 self.current_scene.next_scene = None
-                self.arcade_scene = None  # clean up
+                self.arcade_scene = None  # clean up arcade instance
 
             self.current_scene.draw(self.screen)
             pygame.display.flip()

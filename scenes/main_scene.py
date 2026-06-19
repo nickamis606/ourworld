@@ -172,6 +172,16 @@ class MainScene(BaseScene):
         self.pet_sprite.update(dt)
         self.animator.update(dt)
 
+    def on_exit(self):
+        """Reset transient UI state when leaving MainScene (e.g. to Arcade).
+        This prevents the map overlay from staying visible when returning later.
+        Called automatically by the controller.
+        """
+        super().on_exit()
+        self.map_mode = False
+        # Optionally clear any active animation or status if desired
+        # self.animator.reset() if such method exists
+
     def draw(self, surface: pygame.Surface):
         loc = self.game_state.pet.location
 

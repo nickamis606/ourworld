@@ -182,20 +182,50 @@ class MainScene(BaseScene):
     def draw(self, surface: pygame.Surface):
         loc = self.game_state.pet.location
 
-        # Blit pre-rendered static background (cheap and allows richer detail)
-        if loc in self.bg_surfaces:
-            surface.blit(self.bg_surfaces[loc], (0, 0))
+        if self.map_mode:
+            # When map is open, draw cached bg + map overlay on top
+            if loc in self.bg_surfaces:
+                surface.blit(self.bg_surfaces[loc], (0, 0))
+            else:
+                surface.fill((210, 200, 230))
+            self.map_overlay.draw(surface, loc)
+            # Keep stats bar visible over the map
+            needs = self.game_state.pet.needs
+            total_seeds = (self.game_state.pet.inventory.get("flower_seeds", 0) +
+                           self.game_state.pet.inventory.get("sunflower_seeds", 0))
+            self.stats_bar.draw(surface, needs, self.game_state.pet.coins, total_seeds)
+            return
+
+        # === Normal gameplay view (map closed) ===
+        # Always do a full clean fill first so old map pixels are completely erased
+        if loc == "home":
+            surface.fill((245, 235, 220))
+        elif loc == "park":
+            surface.fill((200, 230, 200))
+        elif loc == "backyard":
+            surface.fill((200, 235, 195))
+        elif loc == "sweeties_candy_shop":
+            surface.fill((255, 240, 245))
+        elif loc == "gens_garden":
+            surface.fill((235, 245, 255))
         else:
             surface.fill((210, 200, 230))
+
+        # Draw the richer cached environment decorations
+        if loc in self.bg_surfaces:
+            surface.blit(self.bg_surfaces[loc], (0, 0))
 
         needs = self.game_state.pet.needs
         total_seeds = (self.game_state.pet.inventory.get("flower_seeds", 0) +
                        self.game_state.pet.inventory.get("sunflower_seeds", 0))
         self.stats_bar.draw(surface, needs, self.game_state.pet.coins, total_seeds)
 
-        # Dynamic elements drawn on top of cached bg
-        self._draw_garden_plants(surface) if loc == "backyard" else None
-        self._draw_home_decoration(surface) if loc == "home" else None
+        # Dynamic elements on top
+        if loc == "backyard":
+            self._draw_garden_plants(surface)
+        if loc == "home":
+            self._draw_home_decoration(surface)
+
         self.pet_sprite.draw(surface)
         self._draw_mood(surface)
         self._draw_status(surface)
@@ -206,11 +236,8 @@ class MainScene(BaseScene):
         has_mature = any(p.get("stage", 0) >= 3 for p in self.game_state.pet.garden)
         self.context_actions.draw(surface, loc, self.game_state.pet.inventory, has_mature)
 
-        if loc == "arcade" and not self.map_mode:
+        if loc == "arcade":
             self.arcade_panel.draw(surface)
-
-        if self.map_mode:
-            self.map_overlay.draw(surface, loc)
 
         if self.anim_state:
             self._draw_anim_effect(surface)
@@ -221,19 +248,15 @@ class MainScene(BaseScene):
     def _prepare_location_background(self, loc: str):
         """Pre-render the static environment for a location to a cached Surface.
         Called only on location change → rich detail with zero per-frame cost.
-        This is the key change to make scenes prettier while staying lightweight.
         """
         bg = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
 
         if loc == "home":
-            # Cozy indoor floor + walls + window with warm light glow
             pygame.draw.rect(bg, (200, 170, 130), (0, 260, self.width, 220))
             pygame.draw.rect(bg, (135, 206, 250), (480, 80, 100, 80), width=5)
             pygame.draw.line(bg, (139, 69, 19), (530, 80), (530, 160), 4)
-            # Soft window glow for cozy feel
             pygame.draw.rect(bg, (255, 240, 200, 50), (485, 85, 90, 70), border_radius=4)
             pygame.draw.rect(bg, (180, 100, 80), (60, 250, 180, 55))
-            # Home decorations (if unlocked) drawn into the cached bg
             if self.game_state.pet.home_decorated:
                 base_x, base_y = 480, 320
                 pygame.draw.rect(bg, (180, 120, 80), (base_x, base_y, 50, 45), border_radius=4)
@@ -247,7 +270,6 @@ class MainScene(BaseScene):
             for tx in (80, 520):
                 pygame.draw.rect(bg, (139, 69, 19), (tx-8, 200, 16, 55))
                 pygame.draw.circle(bg, (34, 160, 50), (tx, 175), 38)
-            # Extra foliage layer for depth and prettier look
             pygame.draw.circle(bg, (30, 140, 45), (150, 240), 25)
             pygame.draw.circle(bg, (30, 140, 45), (500, 250), 22)
             pygame.draw.circle(bg, (25, 120, 40), (300, 235), 18)
@@ -261,7 +283,6 @@ class MainScene(BaseScene):
             pygame.draw.rect(bg, (255, 235, 240), (0, 260, self.width, 220))
             pygame.draw.rect(bg, (200, 50, 70), (150, 245, 340, 120), border_radius=6)
             pygame.draw.polygon(bg, (210, 180, 140), [(140, 245), (320, 200), (500, 245)])
-            # Candy stripe hint on awning for extra charm
             for i in range(5):
                 stripe_x = 160 + i * 55
                 pygame.draw.line(bg, (255, 200, 220), (stripe_x, 250), (stripe_x + 30, 250), 3)
@@ -269,7 +290,6 @@ class MainScene(BaseScene):
         elif loc == "gens_garden":
             pygame.draw.rect(bg, (230, 245, 255), (0, 260, self.width, 220))
             pygame.draw.rect(bg, (90, 150, 210), (150, 250, 340, 110), border_radius=6)
-            # Soft garden border
             pygame.draw.rect(bg, (60, 120, 80), (140, 245, 360, 120), width=4, border_radius=8)
 
         else:
@@ -280,7 +300,6 @@ class MainScene(BaseScene):
         self.bg_surfaces[loc] = bg
 
     def _draw_environment(self, surface, loc):
-        # Kept for backward compatibility / future use; cached version in _prepare is preferred
         if loc == "home":
             pygame.draw.rect(surface, (200, 170, 130), (0, 260, self.width, 220))
             pygame.draw.rect(surface, (135, 206, 250), (480, 80, 100, 80), width=5)

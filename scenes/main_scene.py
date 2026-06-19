@@ -235,7 +235,7 @@ class MainScene(BaseScene):
         surface.blit(hint, (15, 455))
 
     def _prepare_location_background(self, loc: str):
-        """Improved backgrounds - better proportions and clearer visuals."""
+        """Improved backgrounds. Sweeties building moved much higher."""
         bg = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
 
         if loc == "home":
@@ -281,26 +281,26 @@ class MainScene(BaseScene):
             pygame.draw.rect(bg, (90, 60, 30), (557, 290, 8, 22))
 
         elif loc == "sweeties_candy_shop":
-            # Much better version - shorter building, better proportions
+            # Moved the entire shop building WAY UP as requested
             pygame.draw.rect(bg, (255, 235, 240), (0, 260, self.width, 220))
-            # Shop building - shorter and more grounded
-            pygame.draw.rect(bg, (200, 50, 70), (130, 300, 380, 90), border_radius=10)
-            # Awning (lower and attached to building)
-            pygame.draw.polygon(bg, (210, 180, 140), [(120, 300), (320, 265), (520, 300)])
+            # Shop building - moved significantly higher
+            pygame.draw.rect(bg, (200, 50, 70), (130, 220, 380, 100), border_radius=10)
+            # Awning attached higher
+            pygame.draw.polygon(bg, (210, 180, 140), [(120, 220), (320, 185), (520, 220)])
             for i in range(8):
                 stripe_x = 135 + i * 45
-                pygame.draw.line(bg, (255, 200, 220), (stripe_x, 278), (stripe_x + 30, 278), 3)
+                pygame.draw.line(bg, (255, 200, 220), (stripe_x, 198), (stripe_x + 30, 198), 3)
             # Door
-            pygame.draw.rect(bg, (110, 65, 35), (280, 325, 70, 65))
-            pygame.draw.circle(bg, (255, 215, 90), (335, 358), 6)
-            # Big candy decorations on sides (more visible)
-            pygame.draw.circle(bg, (255, 130, 190), (155, 320), 18)
-            pygame.draw.circle(bg, (130, 200, 255), (485, 320), 18)
-            pygame.draw.circle(bg, (255, 190, 90), (165, 350), 12)
-            pygame.draw.circle(bg, (90, 180, 255), (475, 350), 12)
-            # Small windows
-            pygame.draw.rect(bg, (255, 250, 220), (160, 310, 25, 25), border_radius=3)
-            pygame.draw.rect(bg, (255, 250, 220), (455, 310, 25, 25), border_radius=3)
+            pygame.draw.rect(bg, (110, 65, 35), (280, 250, 70, 70))
+            pygame.draw.circle(bg, (255, 215, 90), (335, 285), 6)
+            # Candy decorations
+            pygame.draw.circle(bg, (255, 130, 190), (155, 240), 18)
+            pygame.draw.circle(bg, (130, 200, 255), (485, 240), 18)
+            pygame.draw.circle(bg, (255, 190, 90), (165, 270), 12)
+            pygame.draw.circle(bg, (90, 180, 255), (475, 270), 12)
+            # Windows
+            pygame.draw.rect(bg, (255, 250, 220), (160, 235, 25, 25), border_radius=3)
+            pygame.draw.rect(bg, (255, 250, 220), (455, 235, 25, 25), border_radius=3)
 
         elif loc == "gens_garden":
             pygame.draw.rect(bg, (140, 190, 120), (0, 260, self.width, 220))

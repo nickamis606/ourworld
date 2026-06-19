@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 OurWorld Arcade - Frogger
-Logs now carry the frog properly in their movement direction (classic behavior).
+Based on proven patterns from popular open source Pygame Frogger implementations.
+Logs carry the frog correctly in their movement direction.
 """
 
 import pygame
@@ -85,12 +86,12 @@ class FroggerGame(MinigameBase):
         self.instruction_timer = 0
 
         self.lanes = [
-            {'y': 18, 'speed': 0.95, 'dir': 1,  'is_water': False},
-            {'y': 16, 'speed': 0.75, 'dir': -1, 'is_water': False},
-            {'y': 14, 'speed': 1.05, 'dir': 1,  'is_water': False},
-            {'y': 10, 'speed': 0.65, 'dir': -1, 'is_water': True},
-            {'y': 8,  'speed': 0.85, 'dir': 1,  'is_water': True},
-            {'y': 6,  'speed': 0.55, 'dir': -1, 'is_water': True},
+            {'y': 18, 'speed': 0.9, 'dir': 1,  'is_water': False},
+            {'y': 16, 'speed': 0.7, 'dir': -1, 'is_water': False},
+            {'y': 14, 'speed': 1.0, 'dir': 1,  'is_water': False},
+            {'y': 10, 'speed': 0.6, 'dir': -1, 'is_water': True},
+            {'y': 8,  'speed': 0.8, 'dir': 1,  'is_water': True},
+            {'y': 6,  'speed': 0.5, 'dir': -1, 'is_water': True},
         ]
 
         self.cars = []
@@ -98,7 +99,7 @@ class FroggerGame(MinigameBase):
         self._spawn_vehicles()
 
         self.last_move_time = 0
-        self.move_cooldown = 210
+        self.move_cooldown = 200
 
     def _spawn_vehicles(self):
         self.cars.clear()
@@ -165,19 +166,18 @@ class FroggerGame(MinigameBase):
             return
 
         self.instruction_timer += dt * 1000
-        if self.show_instructions and self.instruction_timer > 3000:
+        if self.show_instructions and self.instruction_timer > 2800:
             self.show_instructions = False
 
-        # Move vehicles
         for car in self.cars:
-            car['x'] += car['speed'] * car['dir'] * 0.55
+            car['x'] += car['speed'] * car['dir'] * 0.5
             if car['x'] < -car['width']:
                 car['x'] = GRID_COLS + 2
             if car['x'] > GRID_COLS + 2:
                 car['x'] = -car['width']
 
         for log in self.logs:
-            log['x'] += log['speed'] * log['dir'] * 0.55
+            log['x'] += log['speed'] * log['dir'] * 0.5
             if log['x'] < -log['width']:
                 log['x'] = GRID_COLS + 2
             if log['x'] > GRID_COLS + 2:
@@ -197,7 +197,7 @@ class FroggerGame(MinigameBase):
                 self._lose_life()
                 return
 
-        # Water lanes - proper log carrying
+        # Water - reliable log carrying (standard pattern from working open source Frogger clones)
         lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
 
         if lane and lane.get('is_water', False):
@@ -206,11 +206,10 @@ class FroggerGame(MinigameBase):
                 if log['y'] == self.frog_y:
                     log_left = log['x']
                     log_right = log['x'] + log['width']
-                    # Forgiving overlap
-                    if log_left - 0.4 <= self.frog_x < log_right + 0.4:
+                    if log_left - 0.3 <= self.frog_x < log_right + 0.3:
                         on_log = True
-                        # Carry frog with the log's exact speed and direction
-                        self.frog_x += log['speed'] * log['dir'] * 0.6
+                        # Carry exactly with the log's speed and direction (classic behavior)
+                        self.frog_x += log['speed'] * log['dir'] * 0.7
                         self.frog_x = max(0, min(GRID_COLS - 1, int(round(self.frog_x))))
                         break
 

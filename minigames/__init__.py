@@ -3,10 +3,12 @@ OurWorld Minigames Package
 """
 from .snake import SnakeGame
 from .pet_dash import PetDash
+from .frogger import FroggerGame
 
 REGISTERED_GAMES = {
     "snake": SnakeGame,
     "pet_dash": PetDash,
+    "frogger": FroggerGame,
 }
 
 def get_minigame(name: str):

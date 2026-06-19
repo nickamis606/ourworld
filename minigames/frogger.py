@@ -1,32 +1,36 @@
 #!/usr/bin/env python3
 """
-OurWorld Arcade - Frogger (throwback style)
-Classic Frogger mechanics in retro pixel style.
+OurWorld Arcade - Frogger (improved throwback style)
+Much better visuals + playable speeds.
 """
 
 import pygame
 import random
 from dataclasses import dataclass
 
-# Screen / Grid
 SCREEN_WIDTH = 640
 SCREEN_HEIGHT = 480
 CELL_SIZE = 20
 GRID_COLS = SCREEN_WIDTH // CELL_SIZE
 GRID_ROWS = SCREEN_HEIGHT // CELL_SIZE
 
-# Colors (retro feel)
-BG_COLOR = (20, 30, 20)
-GRASS_COLOR = (60, 140, 60)
-ROAD_COLOR = (50, 50, 50)
-WATER_COLOR = (30, 80, 140)
-CAR_COLORS = [(200, 50, 50), (50, 150, 200), (220, 180, 50), (180, 50, 180)]
-LOG_COLOR = (139, 90, 43)
-FROG_COLOR = (80, 200, 80)
-FROG_OUTLINE = (30, 100, 30)
-SAFE_COLOR = (40, 120, 40)
-TEXT_COLOR = (240, 245, 250)
-ACCENT = (255, 220, 100)
+# Better retro colors
+BG_COLOR = (15, 25, 15)
+GRASS_TOP = (45, 120, 45)
+GRASS_BOTTOM = (55, 140, 55)
+ROAD_COLOR = (45, 45, 50)
+ROAD_LINE = (220, 220, 220)
+WATER_COLOR = (25, 70, 130)
+WATER_HIGHLIGHT = (40, 100, 160)
+CAR_BODY = [(200, 40, 40), (40, 140, 200), (220, 170, 40), (160, 50, 180)]
+CAR_CABIN = (60, 60, 70)
+LOG_COLOR = (120, 75, 35)
+LOG_HIGHLIGHT = (160, 110, 60)
+FROG_COLOR = (70, 190, 70)
+FROG_DARK = (40, 110, 40)
+TEXT_COLOR = (245, 250, 245)
+ACCENT = (255, 215, 80)
+SAFE_ZONE = (35, 100, 35)
 
 
 @dataclass
@@ -43,8 +47,8 @@ class MinigameBase:
         self.running = True
         self.score = 0
         self.font = pygame.font.SysFont("arial", 24)
-        self.big_font = pygame.font.SysFont("arial", 42, bold=True)
-        self.small_font = pygame.font.SysFont("arial", 16)
+        self.big_font = pygame.font.SysFont("arial", 40, bold=True)
+        self.small_font = pygame.font.SysFont("arial", 15)
 
     def handle_key(self, key): pass
     def update(self, dt): pass
@@ -80,14 +84,14 @@ class FroggerGame(MinigameBase):
         self.show_instructions = True
         self.instruction_timer = 0
 
-        # Lane definitions
+        # Tuned slower speeds for playability
         self.lanes = [
-            {'y': 18, 'speed': 2.5, 'dir': 1, 'is_water': False, 'color': CAR_COLORS[0]},
-            {'y': 16, 'speed': 1.8, 'dir': -1, 'is_water': False, 'color': CAR_COLORS[1]},
-            {'y': 14, 'speed': 3.2, 'dir': 1, 'is_water': False, 'color': CAR_COLORS[2]},
-            {'y': 10, 'speed': 1.5, 'dir': -1, 'is_water': True, 'color': LOG_COLOR},
-            {'y': 8, 'speed': 2.0, 'dir': 1, 'is_water': True, 'color': LOG_COLOR},
-            {'y': 6, 'speed': 1.2, 'dir': -1, 'is_water': True, 'color': LOG_COLOR},
+            {'y': 18, 'speed': 1.4, 'dir': 1,  'is_water': False},
+            {'y': 16, 'speed': 1.1, 'dir': -1, 'is_water': False},
+            {'y': 14, 'speed': 1.7, 'dir': 1,  'is_water': False},
+            {'y': 10, 'speed': 0.9, 'dir': -1, 'is_water': True},
+            {'y': 8,  'speed': 1.2, 'dir': 1,  'is_water': True},
+            {'y': 6,  'speed': 0.75,'dir': -1, 'is_water': True},
         ]
 
         self.cars = []
@@ -95,7 +99,7 @@ class FroggerGame(MinigameBase):
         self._spawn_vehicles()
 
         self.last_move_time = 0
-        self.move_cooldown = 180
+        self.move_cooldown = 220  # slightly slower frog movement for control
 
     def _spawn_vehicles(self):
         self.cars.clear()
@@ -106,18 +110,23 @@ class FroggerGame(MinigameBase):
             speed = lane['speed']
             direction = lane['dir']
             is_water = lane['is_water']
-            color = lane['color']
 
-            num = 4 if not is_water else 3
+            num = 3 if is_water else 4
             spacing = GRID_COLS // num
 
             for i in range(num):
-                x = (i * spacing + random.randint(0, spacing//2)) % GRID_COLS
-                width = 3 if not is_water else 5
+                x = (i * spacing + random.randint(0, spacing - 2)) % GRID_COLS
                 if is_water:
-                    self.logs.append({'x': x, 'y': y, 'width': width, 'speed': speed, 'dir': direction, 'color': color})
+                    self.logs.append({
+                        'x': float(x), 'y': y, 'width': 5,
+                        'speed': speed, 'dir': direction
+                    })
                 else:
-                    self.cars.append({'x': x, 'y': y, 'width': width, 'speed': speed, 'dir': direction, 'color': color})
+                    self.cars.append({
+                        'x': float(x), 'y': y, 'width': 3,
+                        'speed': speed, 'dir': direction,
+                        'color': random.choice(CAR_BODY)
+                    })
 
     def handle_key(self, key):
         if self.game_over or self.won:
@@ -152,49 +161,62 @@ class FroggerGame(MinigameBase):
 
         if moved:
             self.last_move_time = now
-            self.score += 5
+            if self.frog_y < 17:   # reward forward progress more
+                self.score += 8
 
     def update(self, dt):
         if self.game_over or self.won or not self.running:
             return
 
         self.instruction_timer += dt * 1000
-        if self.show_instructions and self.instruction_timer > 3500:
+        if self.show_instructions and self.instruction_timer > 3200:
             self.show_instructions = False
 
+        # Move vehicles (slower tuned speeds)
         for car in self.cars:
-            car['x'] += car['speed'] * car['dir'] * 0.8
-            if car['x'] < -car['width']: car['x'] = GRID_COLS
-            if car['x'] > GRID_COLS: car['x'] = -car['width']
+            car['x'] += car['speed'] * car['dir'] * 0.6
+            if car['x'] < -car['width']:
+                car['x'] = GRID_COLS + 1
+            if car['x'] > GRID_COLS + 1:
+                car['x'] = -car['width']
 
         for log in self.logs:
-            log['x'] += log['speed'] * log['dir'] * 0.8
-            if log['x'] < -log['width']: log['x'] = GRID_COLS
-            if log['x'] > GRID_COLS: log['x'] = -log['width']
+            log['x'] += log['speed'] * log['dir'] * 0.6
+            if log['x'] < -log['width']:
+                log['x'] = GRID_COLS + 1
+            if log['x'] > GRID_COLS + 1:
+                log['x'] = -log['width']
 
         self._check_collisions()
 
         if self.frog_y <= 2:
             self.won = True
-            self.score += 100
+            self.score += 120
             self.running = False
 
     def _check_collisions(self):
+        # Cars
         for car in self.cars:
-            if car['y'] == self.frog_y and car['x'] <= self.frog_x < car['x'] + car['width']:
-                self._lose_life()
-                return
+            if car['y'] == self.frog_y:
+                fx = self.frog_x
+                if car['x'] <= fx < car['x'] + car['width']:
+                    self._lose_life()
+                    return
 
+        # Water / logs
         on_log = False
-        for log in self.logs:
-            if log['y'] == self.frog_y and log['x'] <= self.frog_x < log['x'] + log['width']:
-                on_log = True
-                self.frog_x = int(self.frog_x + log['speed'] * log['dir'] * 0.8)
-                self.frog_x = max(0, min(GRID_COLS-1, self.frog_x))
-                break
+        current_lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
 
-        if self.frog_y in [l['y'] for l in self.lanes if l['is_water']] and not on_log:
-            self._lose_life()
+        if current_lane and current_lane['is_water']:
+            for log in self.logs:
+                if log['y'] == self.frog_y and log['x'] <= self.frog_x < log['x'] + log['width']:
+                    on_log = True
+                    self.frog_x = self.frog_x + log['speed'] * log['dir'] * 0.6
+                    self.frog_x = max(0, min(GRID_COLS - 1, int(self.frog_x)))
+                    break
+
+            if not on_log:
+                self._lose_life()
 
     def _lose_life(self):
         self.lives -= 1
@@ -209,53 +231,82 @@ class FroggerGame(MinigameBase):
         target = screen or self.screen
         target.fill(BG_COLOR)
 
+        # Draw lanes with better detail
         for y in range(GRID_ROWS):
-            if y >= 17:
-                color = GRASS_COLOR
-            elif y in [18, 16, 14]:
-                color = ROAD_COLOR
-            elif y in [10, 8, 6]:
-                color = WATER_COLOR
-            elif y <= 2:
-                color = SAFE_COLOR
-            else:
-                color = (35, 50, 35)
-            pygame.draw.rect(target, color, (0, y * CELL_SIZE, SCREEN_WIDTH, CELL_SIZE))
+            cy = y * CELL_SIZE
 
+            if y >= 17:  # Grass (bottom)
+                pygame.draw.rect(target, GRASS_BOTTOM, (0, cy, SCREEN_WIDTH, CELL_SIZE))
+                # subtle grass lines
+                for i in range(0, SCREEN_WIDTH, 40):
+                    pygame.draw.line(target, GRASS_TOP, (i, cy + 5), (i + 15, cy + CELL_SIZE - 3), 2)
+
+            elif y in [18, 16, 14]:  # Road
+                pygame.draw.rect(target, ROAD_COLOR, (0, cy, SCREEN_WIDTH, CELL_SIZE))
+                # dashed road lines
+                for i in range(0, SCREEN_WIDTH, 50):
+                    pygame.draw.rect(target, ROAD_LINE, (i, cy + CELL_SIZE//2 - 1, 25, 2))
+
+            elif y in [10, 8, 6]:  # Water
+                pygame.draw.rect(target, WATER_COLOR, (0, cy, SCREEN_WIDTH, CELL_SIZE))
+                # water flow lines
+                offset = int((pygame.time.get_ticks() // 80) % 40)
+                for i in range(-40, SCREEN_WIDTH, 40):
+                    pygame.draw.line(target, WATER_HIGHLIGHT, (i + offset, cy + 6), (i + 25 + offset, cy + 6), 2)
+
+            elif y <= 2:  # Top safe zone
+                pygame.draw.rect(target, SAFE_ZONE, (0, cy, SCREEN_WIDTH, CELL_SIZE))
+
+        # Draw cars (better car shape)
         for car in self.cars:
             x = int(car['x'] * CELL_SIZE)
-            y = car['y'] * CELL_SIZE
-            w = car['width'] * CELL_SIZE
-            pygame.draw.rect(target, car['color'], (x, y + 2, w - 4, CELL_SIZE - 4), border_radius=3)
+            y = car['y'] * CELL_SIZE + 3
+            w = car['width'] * CELL_SIZE - 4
+            # Body
+            pygame.draw.rect(target, car['color'], (x, y, w, CELL_SIZE - 8), border_radius=4)
+            # Cabin
+            pygame.draw.rect(target, CAR_CABIN, (x + 6, y + 3, w - 12, CELL_SIZE - 14), border_radius=2)
 
+        # Draw logs (better log look)
         for log in self.logs:
             x = int(log['x'] * CELL_SIZE)
-            y = log['y'] * CELL_SIZE
-            w = log['width'] * CELL_SIZE
-            pygame.draw.rect(target, log['color'], (x, y + 4, w - 4, CELL_SIZE - 8), border_radius=4)
+            y = log['y'] * CELL_SIZE + 4
+            w = log['width'] * CELL_SIZE - 6
+            pygame.draw.rect(target, LOG_COLOR, (x, y, w, CELL_SIZE - 10), border_radius=5)
+            # Log segments
+            for sx in range(8, w - 8, 18):
+                pygame.draw.line(target, LOG_HIGHLIGHT, (x + sx, y + 2), (x + sx, y + CELL_SIZE - 12), 2)
 
-        fx = self.frog_x * CELL_SIZE
-        fy = self.frog_y * CELL_SIZE
-        pygame.draw.rect(target, FROG_COLOR, (fx + 2, fy + 2, CELL_SIZE - 4, CELL_SIZE - 4), border_radius=6)
-        pygame.draw.rect(target, FROG_OUTLINE, (fx + 2, fy + 2, CELL_SIZE - 4, CELL_SIZE - 4), width=2, border_radius=6)
-        pygame.draw.circle(target, (20, 40, 20), (fx + 7, fy + 7), 3)
-        pygame.draw.circle(target, (20, 40, 20), (fx + 13, fy + 7), 3)
+        # Draw frog (nicer shape)
+        fx = self.frog_x * CELL_SIZE + 2
+        fy = self.frog_y * CELL_SIZE + 2
+        # Body
+        pygame.draw.ellipse(target, FROG_COLOR, (fx, fy + 4, CELL_SIZE - 4, CELL_SIZE - 10))
+        # Head
+        pygame.draw.ellipse(target, FROG_COLOR, (fx + 4, fy, CELL_SIZE - 10, CELL_SIZE - 8))
+        pygame.draw.ellipse(target, FROG_DARK, (fx + 4, fy, CELL_SIZE - 10, CELL_SIZE - 8), 2)
+        # Eyes
+        pygame.draw.circle(target, (255, 255, 200), (fx + 8, fy + 6), 4)
+        pygame.draw.circle(target, (255, 255, 200), (fx + 14, fy + 6), 4)
+        pygame.draw.circle(target, (30, 30, 30), (fx + 9, fy + 6), 2)
+        pygame.draw.circle(target, (30, 30, 30), (fx + 15, fy + 6), 2)
 
+        # UI
         target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT_COLOR), (12, 8))
-        target.blit(self.small_font.render(f"LIVES: {self.lives}", True, TEXT_COLOR), (12, 38))
-        target.blit(self.small_font.render("OURWORLD ARCADE • FROGGER", True, ACCENT), (SCREEN_WIDTH - 260, 10))
+        target.blit(self.small_font.render(f"LIVES: {self.lives}", True, TEXT_COLOR), (12, 36))
+        target.blit(self.small_font.render("OURWORLD ARCADE • FROGGER", True, ACCENT), (SCREEN_WIDTH - 250, 10))
 
         if self.show_instructions:
-            inst = self.small_font.render("Arrows/WASD to move  •  Reach the top!  •  Avoid cars & water", True, (200, 220, 200))
-            target.blit(inst, (SCREEN_WIDTH//2 - inst.get_width()//2, 80))
+            inst = self.small_font.render("Arrows/WASD: Move   |   Reach the top safe zone!", True, (210, 230, 210))
+            target.blit(inst, (SCREEN_WIDTH//2 - inst.get_width()//2, 70))
 
         if self.game_over:
-            msg = self.big_font.render("GAME OVER - R to restart, ESC to quit", True, (255, 180, 180))
-            target.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, 180))
+            msg = self.big_font.render("GAME OVER  •  R = Restart   ESC = Quit", True, (255, 170, 170))
+            target.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, 170))
 
         if self.won:
-            msg = self.big_font.render("YOU MADE IT! +100 pts", True, (100, 255, 150))
-            target.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, 180))
+            msg = self.big_font.render("NICE! YOU MADE IT ACROSS!", True, (120, 255, 160))
+            target.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, 170))
 
 
 if __name__ == "__main__":
@@ -264,4 +315,4 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
     g = FroggerGame(screen, clock)
     g.run()
-    pygame.quit()
+    pygame.quit()}

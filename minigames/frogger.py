@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-OurWorld Arcade - Frogger (fixed log carrying)
+OurWorld Arcade - Frogger
+Logs now carry the frog properly in their movement direction (classic behavior).
 """
 
 import pygame
@@ -167,6 +168,7 @@ class FroggerGame(MinigameBase):
         if self.show_instructions and self.instruction_timer > 3000:
             self.show_instructions = False
 
+        # Move vehicles
         for car in self.cars:
             car['x'] += car['speed'] * car['dir'] * 0.55
             if car['x'] < -car['width']:
@@ -189,27 +191,26 @@ class FroggerGame(MinigameBase):
             self.running = False
 
     def _check_collisions(self):
-        # Road cars
+        # Cars
         for car in self.cars:
-            if car['y'] == self.frog_y:
-                if car['x'] <= self.frog_x < car['x'] + car['width']:
-                    self._lose_life()
-                    return
+            if car['y'] == self.frog_y and car['x'] <= self.frog_x < car['x'] + car['width']:
+                self._lose_life()
+                return
 
-        # Water / logs - fixed carrying logic
+        # Water lanes - proper log carrying
         lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
 
         if lane and lane.get('is_water', False):
             on_log = False
             for log in self.logs:
                 if log['y'] == self.frog_y:
-                    # More forgiving overlap check
                     log_left = log['x']
                     log_right = log['x'] + log['width']
-                    if log_left - 0.5 <= self.frog_x < log_right + 0.5:
+                    # Forgiving overlap
+                    if log_left - 0.4 <= self.frog_x < log_right + 0.4:
                         on_log = True
-                        # Carry the frog smoothly
-                        self.frog_x = self.frog_x + log['speed'] * log['dir'] * 0.55
+                        # Carry frog with the log's exact speed and direction
+                        self.frog_x += log['speed'] * log['dir'] * 0.6
                         self.frog_x = max(0, min(GRID_COLS - 1, int(round(self.frog_x))))
                         break
 

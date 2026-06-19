@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 OurWorld Arcade - Pet Dash (Improved Endless Runner)
-Based on proven patterns from open source Pygame endless runners.
-Better visuals, double jump, increasing difficulty, parallax background.
+Better visuals + noticeably progressive difficulty.
 """
 
 import pygame
@@ -94,7 +93,7 @@ class PetDash(MinigameBase):
 
         self.base_speed = 5.0
         self.speed = self.base_speed
-        self.next_difficulty = 15
+        self.next_difficulty = 12          # start ramping earlier
 
         self.anim_frame = 0
         self.bg_offset = 0
@@ -104,12 +103,12 @@ class PetDash(MinigameBase):
         h = random.randint(30, 55)
         is_high = random.random() < 0.3
         y = GROUND_Y - h if not is_high else GROUND_Y - h - 65
-        x = self.last_obstacle + random.randint(180, 260)
+        x = self.last_obstacle + random.randint(160, 240)
         self.obstacles.append({"x": x, "y": y, "w": w, "h": h})
         self.last_obstacle = x
 
     def spawn_treat(self):
-        x = self.last_treat + random.randint(120, 200)
+        x = self.last_treat + random.randint(110, 190)
         y = random.randint(GROUND_Y - 160, GROUND_Y - 70)
         self.treats.append({"x": x, "y": y})
         self.last_treat = x
@@ -134,7 +133,7 @@ class PetDash(MinigameBase):
             return
 
         self.instruction_timer += dt
-        if self.instruction_timer > 2.8:
+        if self.instruction_timer > 2.5:
             self.show_instructions = False
 
         # Physics
@@ -147,10 +146,11 @@ class PetDash(MinigameBase):
             self.pet_vel_y = 0
             self.jumps = 0
 
-        # Spawn
-        if not self.obstacles or self.obstacles[-1]["x"] < SCREEN_WIDTH - 200:
+        # Spawn (more frequent as speed increases)
+        spawn_gap = max(140, 220 - int(self.speed * 8))
+        if not self.obstacles or self.obstacles[-1]["x"] < SCREEN_WIDTH - spawn_gap:
             self.spawn_obstacle()
-        if not self.treats or self.treats[-1]["x"] < SCREEN_WIDTH - 120:
+        if not self.treats or self.treats[-1]["x"] < SCREEN_WIDTH - 100:
             self.spawn_treat()
 
         # Move world
@@ -185,14 +185,15 @@ class PetDash(MinigameBase):
         self.distance += move_speed * 0.8
         self.score = int(self.distance / 7) + len([t for t in self.treats if t["x"] < 0]) * 8
 
+        # More aggressive difficulty ramp
         if self.score >= self.next_difficulty:
-            self.speed = min(8.5, self.speed + 0.35)
-            self.next_difficulty += 18
+            self.speed = min(9.0, self.speed + 0.45)   # bigger speed jumps
+            self.next_difficulty += 12                   # more frequent increases
 
     def draw(self, screen=None):
         target = screen or self.screen
 
-        # Sky gradient (simple)
+        # Sky gradient
         for i in range(SCREEN_HEIGHT):
             ratio = i / SCREEN_HEIGHT
             r = int(SKY_TOP[0] * (1-ratio) + SKY_BOTTOM[0] * ratio)
@@ -264,4 +265,4 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
     game = PetDash(screen, clock)
     game.run()
-    pygame.quit()
+    pygame.quit()}

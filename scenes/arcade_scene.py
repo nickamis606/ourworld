@@ -2,12 +2,7 @@
 """
 ArcadeScene - Dedicated scene for the Arcade location.
 
-Handles:
-- Arcade menu / game selection
-- Launching and running minigames (Snake, Pet Dash)
-- Returning scores/rewards to the main game state
-
-This replaces the string-based minigame signaling from MainScene.
+Now supports Snake, Pet Dash, and Frogger.
 """
 
 import pygame
@@ -27,12 +22,12 @@ class ArcadeScene(BaseScene):
         self.small_font = pygame.font.SysFont("Arial", 14)
         self.font = pygame.font.SysFont("Arial", 22)
 
-        self.selected_game = 0  # 0 = Snake, 1 = Pet Dash
+        self.selected_game = 0  # 0 = Snake, 1 = Pet Dash, 2 = Frogger
         self.minigame = None
         self.minigame_type = None
         self.status = "Choose a game!"
 
-        self.next_scene = None  # Can request return to MainScene
+        self.next_scene = None
 
     def handle_event(self, event: pygame.event.Event):
         if self.minigame:
@@ -42,21 +37,23 @@ class ArcadeScene(BaseScene):
 
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_LEFT, pygame.K_a):
-                self.selected_game = (self.selected_game - 1) % 2
+                self.selected_game = (self.selected_game - 1) % 3
             elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                self.selected_game = (self.selected_game + 1) % 2
+                self.selected_game = (self.selected_game + 1) % 3
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 self._launch_selected_game()
             elif event.key in (pygame.K_ESCAPE, pygame.K_q):
                 self._return_to_main()
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # Simple click detection on game buttons
-            if pygame.Rect(150, 200, 150, 80).collidepoint(event.pos):
+            if pygame.Rect(80, 200, 140, 80).collidepoint(event.pos):
                 self.selected_game = 0
                 self._launch_selected_game()
-            elif pygame.Rect(340, 200, 150, 80).collidepoint(event.pos):
+            elif pygame.Rect(250, 200, 140, 80).collidepoint(event.pos):
                 self.selected_game = 1
+                self._launch_selected_game()
+            elif pygame.Rect(420, 200, 140, 80).collidepoint(event.pos):
+                self.selected_game = 2
                 self._launch_selected_game()
 
     def _launch_selected_game(self):
@@ -68,12 +65,17 @@ class ArcadeScene(BaseScene):
             MinigameClass = get_minigame("snake")
             self.minigame = MinigameClass(self.screen, pygame.time.Clock())
             self.status = "Snake time! Arrows/WASD • ESC to quit"
-        else:
+        elif self.selected_game == 1:
             self.minigame_type = "pet_dash"
             MinigameClass = get_minigame("pet_dash")
             color = getattr(self.game_state.pet, 'color', (200, 150, 100))
             self.minigame = MinigameClass(self.screen, pygame.time.Clock(), color)
             self.status = "Pet Dash! SPACE/UP to jump • ESC to quit"
+        else:
+            self.minigame_type = "frogger"
+            MinigameClass = get_minigame("frogger")
+            self.minigame = MinigameClass(self.screen, pygame.time.Clock())
+            self.status = "Frogger! Arrows/WASD to move • Reach the top!"
 
     def _return_to_main(self):
         self.next_scene = "main"
@@ -84,7 +86,7 @@ class ArcadeScene(BaseScene):
         if self.minigame:
             self.minigame.update(dt)
 
-            if getattr(self.minigame, 'game_over', False):
+            if getattr(self.minigame, 'game_over', False) or getattr(self.minigame, 'won', False):
                 self._handle_minigame_end()
 
     def _handle_minigame_end(self):
@@ -99,12 +101,18 @@ class ArcadeScene(BaseScene):
                 self.game_state.pet.needs.happiness = min(100, self.game_state.pet.needs.happiness + bonus)
             self.game_state.earn_coins(max(20, score // 2))
             self.status = f"Snake complete! +{bonus} Happiness, +{max(20, score // 2)} coins"
-        else:
+        elif self.minigame_type == "pet_dash":
             bonus = min(30, score // 4)
             if bonus > 0:
                 self.game_state.pet.needs.happiness = min(100, self.game_state.pet.needs.happiness + bonus)
             self.game_state.earn_coins(max(15, score // 3))
             self.status = f"Pet Dash complete! +{bonus} Happiness"
+        else:  # frogger
+            bonus = min(35, score // 3)
+            if bonus > 0:
+                self.game_state.pet.needs.happiness = min(100, self.game_state.pet.needs.happiness + bonus)
+            self.game_state.earn_coins(max(18, score // 2))
+            self.status = f"Frogger complete! +{bonus} Happiness, +{max(18, score // 2)} coins"
 
         self.minigame = None
         self.minigame_type = None
@@ -112,37 +120,40 @@ class ArcadeScene(BaseScene):
     def draw(self, surface: pygame.Surface):
         surface.fill((50, 45, 70))
 
-        # Title
         title = self.font.render("ARCADE", True, (255, 220, 100))
         surface.blit(title, (self.width//2 - title.get_width()//2, 40))
 
         if self.minigame and hasattr(self.minigame, 'draw'):
             self.minigame.draw(surface)
-            # Overlay status
             status_surf = self.small_font.render(self.status, True, (200, 200, 200))
             surface.blit(status_surf, (20, self.height - 40))
             return
 
-        # Game selection buttons
-        snake_rect = pygame.Rect(150, 200, 150, 80)
-        dash_rect = pygame.Rect(340, 200, 150, 80)
+        # Three game buttons
+        snake_rect = pygame.Rect(80, 200, 140, 80)
+        dash_rect = pygame.Rect(250, 200, 140, 80)
+        frog_rect = pygame.Rect(420, 200, 140, 80)
 
-        # Snake button
+        # Snake
         color = (80, 200, 120) if self.selected_game == 0 else (60, 150, 90)
         pygame.draw.rect(surface, color, snake_rect, border_radius=10)
         pygame.draw.rect(surface, (255, 255, 255), snake_rect, width=3, border_radius=10)
         surface.blit(self.small_font.render("SNAKE", True, (255, 255, 255)), (snake_rect.x + 45, snake_rect.y + 30))
 
-        # Pet Dash button
+        # Pet Dash
         color = (255, 160, 80) if self.selected_game == 1 else (200, 120, 60)
         pygame.draw.rect(surface, color, dash_rect, border_radius=10)
         pygame.draw.rect(surface, (255, 255, 255), dash_rect, width=3, border_radius=10)
-        surface.blit(self.small_font.render("PET DASH", True, (255, 255, 255)), (dash_rect.x + 35, dash_rect.y + 30))
+        surface.blit(self.small_font.render("PET DASH", True, (255, 255, 255)), (dash_rect.x + 30, dash_rect.y + 30))
 
-        # Instructions
+        # Frogger
+        color = (100, 180, 255) if self.selected_game == 2 else (70, 130, 200)
+        pygame.draw.rect(surface, color, frog_rect, border_radius=10)
+        pygame.draw.rect(surface, (255, 255, 255), frog_rect, width=3, border_radius=10)
+        surface.blit(self.small_font.render("FROGGER", True, (255, 255, 255)), (frog_rect.x + 30, frog_rect.y + 30))
+
         inst = self.small_font.render("Left/Right to select  •  Enter/Space to play  •  ESC to leave arcade", True, (180, 180, 180))
         surface.blit(inst, (self.width//2 - inst.get_width()//2, 320))
 
-        # Status
         status_surf = self.small_font.render(self.status, True, (200, 200, 200))
         surface.blit(status_surf, (20, self.height - 40))

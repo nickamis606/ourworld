@@ -160,7 +160,7 @@ class MainScene(BaseScene):
             info = self.game_state.get_current_location_info()
             self.status = f"Moved to {info['name']}. {info['desc']}"
             self._prepare_location_background(loc)
-            self._load_location_background(loc)  # Try asset or fallback
+            self._load_location_background(loc)
         self.map_mode = False
 
     def update(self, dt: float):
@@ -174,6 +174,7 @@ class MainScene(BaseScene):
         loc = self.game_state.pet.location
 
         if self.map_mode:
+            # When map is open, draw cached bg + map on top
             if loc in self.bg_surfaces:
                 surface.blit(self.bg_surfaces[loc], (0, 0))
             else:
@@ -185,14 +186,27 @@ class MainScene(BaseScene):
             self.stats_bar.draw(surface, needs, self.game_state.pet.coins, total_seeds)
             return
 
-        # Draw background (asset if available, otherwise procedural)
+        # === Normal view (map closed) ===
+        # Always do a full clear first to erase any leftover map pixels
+        if loc == "home":
+            surface.fill((245, 235, 220))
+        elif loc == "park":
+            surface.fill((200, 230, 200))
+        elif loc == "backyard":
+            surface.fill((200, 235, 195))
+        elif loc == "sweeties_candy_shop":
+            surface.fill((255, 240, 245))
+        elif loc == "gens_garden":
+            surface.fill((235, 245, 255))
+        else:
+            surface.fill((210, 200, 230))
+
+        # Then draw background (asset if available, otherwise procedural)
         if self.location_bg.has_asset():
             self.location_bg.draw(surface)
         else:
             if loc in self.bg_surfaces:
                 surface.blit(self.bg_surfaces[loc], (0, 0))
-            else:
-                surface.fill((210, 200, 230))
 
         needs = self.game_state.pet.needs
         total_seeds = (self.game_state.pet.inventory.get("flower_seeds", 0) +

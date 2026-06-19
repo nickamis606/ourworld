@@ -2,7 +2,7 @@
 """
 MainScene - Primary gameplay scene.
 
-Uses ActionAnimator for care action visuals.
+Now uses both ActionAnimator and LocationBackground foundation.
 """
 
 import pygame
@@ -12,6 +12,7 @@ from typing import Optional, Any
 
 from scenes.base_scene import BaseScene
 from sprites.pet_sprite import PetSprite
+from sprites.location_background import LocationBackground
 from ui.stats_bar import StatsBar
 from ui.action_buttons import ActionButtons
 from ui.shop_ui import ShopUI
@@ -43,16 +44,27 @@ class MainScene(BaseScene):
         self.pet_sprite = PetSprite(pet_config, size=0.95, pos=(340, 210))
         self.pet_bob = 0.0
 
+        # New asset-based background system (with procedural fallback)
+        self.location_bg = LocationBackground(self.width, self.height)
+
+        # Cached procedural backgrounds (fallback)
         self.bg_surfaces: dict[str, pygame.Surface] = {}
         self._prepare_location_background(self.game_state.pet.location)
 
-        # New reusable animation system
+        # Load background asset if available (otherwise uses procedural)
+        self._load_location_background(self.game_state.pet.location)
+
+        # Animation system
         self.animator = ActionAnimator()
 
         self.map_mode = False
         self.status = f"Take good care of {game_state.pet.name}!"
 
         self.next_scene = None
+
+    def _load_location_background(self, location: str):
+        """Try to load asset-based background, fall back to procedural."""
+        self.location_bg.load(location, procedural_fallback=self._prepare_location_background)
 
     def handle_event(self, event: pygame.event.Event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -148,6 +160,7 @@ class MainScene(BaseScene):
             info = self.game_state.get_current_location_info()
             self.status = f"Moved to {info['name']}. {info['desc']}"
             self._prepare_location_background(loc)
+            self._load_location_background(loc)  # Try asset or fallback
         self.map_mode = False
 
     def update(self, dt: float):
@@ -155,8 +168,6 @@ class MainScene(BaseScene):
         self.pet_bob = (self.pet_bob + 0.08) % (2 * math.pi)
         self.pet_sprite.set_bob(self.pet_bob)
         self.pet_sprite.update(dt)
-
-        # Update animation system
         self.animator.update(dt)
 
     def draw(self, surface: pygame.Surface):
@@ -174,21 +185,14 @@ class MainScene(BaseScene):
             self.stats_bar.draw(surface, needs, self.game_state.pet.coins, total_seeds)
             return
 
-        if loc == "home":
-            surface.fill((245, 235, 220))
-        elif loc == "park":
-            surface.fill((200, 230, 200))
-        elif loc == "backyard":
-            surface.fill((200, 235, 195))
-        elif loc == "sweeties_candy_shop":
-            surface.fill((255, 240, 245))
-        elif loc == "gens_garden":
-            surface.fill((235, 245, 255))
+        # Draw background (asset if available, otherwise procedural)
+        if self.location_bg.has_asset():
+            self.location_bg.draw(surface)
         else:
-            surface.fill((210, 200, 230))
-
-        if loc in self.bg_surfaces:
-            surface.blit(self.bg_surfaces[loc], (0, 0))
+            if loc in self.bg_surfaces:
+                surface.blit(self.bg_surfaces[loc], (0, 0))
+            else:
+                surface.fill((210, 200, 230))
 
         needs = self.game_state.pet.needs
         total_seeds = (self.game_state.pet.inventory.get("flower_seeds", 0) +
@@ -213,15 +217,15 @@ class MainScene(BaseScene):
         if loc == "arcade":
             self.arcade_panel.draw(surface)
 
-        # Draw animation using the new system
         if self.animator.is_active:
             self.animator.draw(surface, 340, 210)
 
         hint = self.tiny_font.render("F/P/C/R • M=Map • Q=Quit", True, (100, 100, 100))
         surface.blit(hint, (15, 455))
 
+    # Keep existing procedural background method as fallback
     def _prepare_location_background(self, loc: str):
-        """Improved backgrounds."""
+        """Procedural fallback background (used when no asset exists)."""
         bg = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
 
         if loc == "home":
@@ -359,21 +363,7 @@ class MainScene(BaseScene):
             info = self.game_state.get_current_location_info()
             self.status = f"Moved to {info['name']}. {info['desc']}"
             self._prepare_location_background(loc)
-        self.map_mode = False
-
-    def update(self, dt: float):
-        super().update(dt)
-        self.pet_bob = (self.pet_bob + 0.08) % (2 * math.pi)
-        self.pet_sprite.set_bob(self.pet_bob)
-        self.pet_sprite.update(dt)
-        self.animator.update(dt)
-
-    def change_location(self, loc: str):
-        if loc != self.game_state.pet.location:
-            self.game_state.change_location(loc)
-            info = self.game_state.get_current_location_info()
-            self.status = f"Moved to {info['name']}. {info['desc']}"
-            self._prepare_location_background(loc)
+            self._load_location_background(loc)
         self.map_mode = False
 
     def update(self, dt: float):

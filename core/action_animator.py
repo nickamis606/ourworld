@@ -2,7 +2,7 @@
 """
 ActionAnimator - Reusable Pygame animation system for care actions.
 
-Improved with better visuals, particles, longer duration, and more satisfying effects.
+Improved with better visuals, new effects, longer duration, and more satisfying effects.
 """
 
 import pygame
@@ -31,7 +31,7 @@ class ActionAnimator:
         self.is_active = False
         self.action_type: Optional[str] = None
         self.start_time = 0.0
-        self.duration = 1.3  # longer, more satisfying duration
+        self.duration = 1.3
         self.progress = 0.0
 
     def start(self, action_type: str):
@@ -72,18 +72,15 @@ class ActionAnimator:
     # ===================== FEED =====================
     def _draw_feed(self, surface, cx, cy):
         p = self.progress
-        # Food bowl
         pygame.draw.ellipse(surface, (139, 69, 19), (cx + 45, cy + 8, 50, 26))
         pygame.draw.ellipse(surface, (210, 180, 140), (cx + 50, cy + 3, 40, 20))
 
-        # Rising crumbs / particles
         for i in range(5):
             x = cx + 55 + (i - 2) * 7
             y = cy - 5 - (p * 55) - (i * 4)
             size = 3 + (1 if i % 2 == 0 else 0)
             pygame.draw.circle(surface, (180, 140, 80), (x, y), size)
 
-        # Small satisfaction heart at the end
         if p > 0.6:
             heart_p = (p - 0.6) / 0.4
             hx = cx + 70
@@ -92,44 +89,56 @@ class ActionAnimator:
             pygame.draw.circle(surface, (255, 100, 150), (hx + 4, hy), 5)
             pygame.draw.polygon(surface, (255, 100, 150), [(hx - 8, hy + 2), (hx, hy + 12), (hx + 8, hy + 2)])
 
-    # ===================== PLAY =====================
+    # ===================== PLAY (Much improved) =====================
     def _draw_play(self, surface, cx, cy):
         p = self.progress
-        # Bouncing ball with squash
-        bounce = math.sin(p * math.pi) * 28
-        ball_y = cy + 12 - bounce
-        squash = 1.0 + math.sin(p * math.pi * 2) * 0.15
 
-        pygame.draw.ellipse(surface, (255, 99, 71), (cx + 60, ball_y - 8 * squash, 16, 16 * squash))
+        # Multiple energetic bounces
+        bounce = abs(math.sin(p * math.pi * 2.5)) * 32
+        ball_y = cy + 15 - bounce
 
-        # Motion trail
-        for i in range(3):
-            trail_p = max(0, p - i * 0.08)
-            trail_y = cy + 12 - math.sin(trail_p * math.pi) * 28
-            alpha = 150 - i * 40
-            pygame.draw.circle(surface, (255, 150, 100), (cx + 60, trail_y), 5)
+        # Ball with slight squash on impact
+        squash = 1.0
+        if bounce < 5:
+            squash = 0.7 + (bounce / 5) * 0.3
+
+        # Main ball
+        pygame.draw.ellipse(surface, (255, 99, 71), (cx + 58, ball_y - 9 * squash, 18, 18 * squash))
+        # Highlight
+        pygame.draw.ellipse(surface, (255, 160, 120), (cx + 62, ball_y - 6 * squash, 6, 5))
+
+        # Strong motion lines / speed lines
+        for i in range(4):
+            line_y = ball_y + (i - 1.5) * 6
+            length = 20 + i * 5
+            pygame.draw.line(surface, (255, 150, 80), 
+                            (cx + 45, line_y), (cx + 45 - length, line_y - 8), 2)
+
+        # Impact dust / particles when hitting ground
+        if bounce < 8:
+            for i in range(5):
+                px = cx + 60 + (i - 2) * 6
+                py = cy + 22 + (i % 2) * 3
+                size = 2 + (1 if i % 2 == 0 else 0)
+                pygame.draw.circle(surface, (200, 180, 140), (px, py), size)
 
     # ===================== CLEAN =====================
     def _draw_clean(self, surface, cx, cy):
         p = self.progress
-        # Multiple rising bubbles with horizontal drift
         for i in range(6):
             x = cx + 50 + math.sin((p * 4) + i) * 12 + (i - 2.5) * 8
             y = cy - (p * 60) - (i * 6)
             size = 4 + (i % 3)
             pygame.draw.circle(surface, (135, 206, 250), (x, y), size, 2)
-            # Inner highlight
             pygame.draw.circle(surface, (200, 240, 255), (x - 2, y - 2), max(1, size - 3))
 
     # ===================== REST =====================
     def _draw_rest(self, surface, cx, cy):
         p = self.progress
-        # Multiple floating Z's with different timing
         for i in range(4):
             offset_x = i * 10
             offset_y = (p * 35) + (i * 6)
             size = 20 - i * 3
-            alpha = max(40, 220 - int(p * 160))
             font = pygame.font.SysFont("Arial", size)
             z_surf = font.render("Z", True, (147, 112, 219))
             surface.blit(z_surf, (cx + 55 + offset_x, cy - 20 - offset_y))
@@ -140,19 +149,14 @@ class ActionAnimator:
         base_x = cx + 55
         base_y = cy + 10
 
-        # Stem growing up
         stem_height = int(p * 35)
         pygame.draw.line(surface, (34, 120, 34), (base_x, base_y), (base_x, base_y - stem_height), 3)
 
-        # Leaves appearing
         if p > 0.3:
             leaf_p = (p - 0.3) / 0.7
-            # Left leaf
             pygame.draw.ellipse(surface, (60, 160, 60), (base_x - 18, base_y - stem_height + 5, 16, 10))
-            # Right leaf
             pygame.draw.ellipse(surface, (60, 160, 60), (base_x + 2, base_y - stem_height + 8, 16, 10))
 
-        # Small flower at the top when done
         if p > 0.7:
             flower_y = base_y - stem_height
             pygame.draw.circle(surface, (255, 100, 150), (base_x, flower_y - 5), 6)

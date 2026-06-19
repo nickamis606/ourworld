@@ -3,6 +3,7 @@
 MainScene - Primary gameplay scene.
 
 Clean version with pot only drawn when home_decorated is True.
+Animations now follow actual pet position (works in all locations).
 """
 
 import pygame
@@ -172,6 +173,10 @@ class MainScene(BaseScene):
         self.pet_sprite.update(dt)
         self.animator.update(dt)
 
+    def on_enter(self):
+        super().on_enter()
+        self.map_mode = False   # belt-and-suspenders reset on re-entry
+
     def on_exit(self):
         """Reset transient UI state when leaving MainScene (e.g. to Arcade).
         This prevents the map overlay from staying visible when returning later.
@@ -179,8 +184,6 @@ class MainScene(BaseScene):
         """
         super().on_exit()
         self.map_mode = False
-        # Optionally clear any active animation or status if desired
-        # self.animator.reset() if such method exists
 
     def draw(self, surface: pygame.Surface):
         loc = self.game_state.pet.location
@@ -229,7 +232,8 @@ class MainScene(BaseScene):
             self.arcade_panel.draw(surface)
 
         if self.animator.is_active:
-            self.animator.draw(surface, 340, 210)
+            px, py = self.pet_sprite.pos
+            self.animator.draw(surface, int(px), int(py))
 
         hint = self.tiny_font.render("F/P/C/R • M=Map • Q=Quit", True, (100, 100, 100))
         surface.blit(hint, (15, 455))

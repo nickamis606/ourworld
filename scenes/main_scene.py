@@ -2,8 +2,6 @@
 """
 MainScene - Primary gameplay scene.
 
-Now uses MapOverlay for the neighborhood map.
-
 UI components used:
 - StatsBar
 - ActionButtons
@@ -40,7 +38,6 @@ class MainScene(BaseScene):
         self.small_font = pygame.font.SysFont("Arial", 14)
         self.tiny_font = pygame.font.SysFont("Arial", 12)
 
-        # Shared UI components
         self.stats_bar = StatsBar(self.width, self.small_font, self.tiny_font)
         self.action_buttons = ActionButtons(y=415, small_font=self.small_font)
         self.shop_ui = ShopUI(self.small_font)
@@ -48,11 +45,9 @@ class MainScene(BaseScene):
         self.arcade_panel = ArcadePanel(self.small_font, self.tiny_font)
         self.map_overlay = MapOverlay(self.small_font, self.font)
 
-        # Pet sprite - size is now a multiplier on top of normalized base size
         self.pet_sprite = PetSprite(pet_config, size=0.95, pos=(340, 210))
         self.pet_bob = 0.0
 
-        # Cached static backgrounds per location (drawn once on change for performance + richer visuals)
         self.bg_surfaces: dict[str, pygame.Surface] = {}
         self._prepare_location_background(self.game_state.pet.location)
 
@@ -194,7 +189,6 @@ class MainScene(BaseScene):
             self.stats_bar.draw(surface, needs, self.game_state.pet.coins, total_seeds)
             return
 
-        # Normal view - clean fill first (fixes map artifact bug)
         if loc == "home":
             surface.fill((245, 235, 220))
         elif loc == "park":
@@ -241,93 +235,92 @@ class MainScene(BaseScene):
         surface.blit(hint, (15, 455))
 
     def _prepare_location_background(self, loc: str):
-        """Pre-render richer, cozier static environments for each location."""
+        """Improved backgrounds - better proportions and clearer visuals."""
         bg = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
 
         if loc == "home":
-            # Warm cozy indoor
-            pygame.draw.rect(bg, (200, 170, 130), (0, 260, self.width, 220))  # floor
-            pygame.draw.rect(bg, (180, 140, 110), (0, 0, self.width, 260))     # upper walls
-            # Window with panes and warm light
+            pygame.draw.rect(bg, (200, 170, 130), (0, 260, self.width, 220))
+            pygame.draw.rect(bg, (180, 140, 110), (0, 0, self.width, 260))
             pygame.draw.rect(bg, (135, 206, 250), (480, 70, 110, 95), width=6)
             pygame.draw.rect(bg, (255, 245, 200, 70), (485, 75, 100, 85), border_radius=3)
             for i in range(3):
                 pygame.draw.line(bg, (100, 80, 60), (485, 75 + i*28), (585, 75 + i*28), 2)
             pygame.draw.line(bg, (100, 80, 60), (535, 75), (535, 160), 2)
-            # Rug
             pygame.draw.ellipse(bg, (140, 80, 60), (80, 300, 200, 90))
             pygame.draw.ellipse(bg, (120, 60, 40), (90, 310, 180, 70))
-            # Small table
             pygame.draw.rect(bg, (120, 80, 50), (300, 340, 80, 12))
             pygame.draw.rect(bg, (100, 60, 30), (305, 352, 8, 35))
             pygame.draw.rect(bg, (100, 60, 30), (367, 352, 8, 35))
-            # Shelf with books
             pygame.draw.rect(bg, (90, 60, 40), (40, 120, 120, 18))
             for i, c in enumerate([(200,80,80), (80,160,80), (80,120,200), (220,180,60)]):
                 pygame.draw.rect(bg, c, (50 + i*28, 123, 20, 12))
 
         elif loc == "park":
-            # Grass with variation
             pygame.draw.rect(bg, (120, 180, 120), (0, 260, self.width, 220))
             for x in range(0, 640, 40):
                 pygame.draw.ellipse(bg, (100, 160, 100), (x, 280 + (x % 80)//2, 50, 25))
-            # Trees
             for tx, ty, s in [(80, 200, 1.0), (520, 210, 0.9), (300, 195, 1.1), (150, 220, 0.75)]:
                 pygame.draw.rect(bg, (101, 67, 33), (tx-6*s, ty+10*s, 12*s, 35*s))
                 pygame.draw.circle(bg, (34, 160, 50), (tx, ty-5*s), 32*s)
                 pygame.draw.circle(bg, (30, 140, 45), (tx-12*s, ty+5*s), 20*s)
                 pygame.draw.circle(bg, (30, 140, 45), (tx+12*s, ty+5*s), 20*s)
-            # Path
             pygame.draw.ellipse(bg, (180, 160, 130), (200, 340, 240, 50))
-            # Flowers
             for fx, fy in [(220, 310), (400, 305), (280, 325)]:
                 pygame.draw.circle(bg, (255, 100, 150), (fx, fy), 6)
                 pygame.draw.circle(bg, (255, 200, 80), (fx, fy), 3)
 
         elif loc == "backyard":
+            # Fixed: Lower fence + bigger garden bed
             pygame.draw.rect(bg, (140, 190, 120), (0, 260, self.width, 220))
-            # Fence
-            pygame.draw.rect(bg, (120, 90, 60), (0, 280, self.width, 12))
-            for x in range(40, 600, 50):
-                pygame.draw.rect(bg, (100, 70, 40), (x, 260, 8, 35))
-            # Garden bed
-            pygame.draw.rect(bg, (101, 67, 33), (80, 310, 480, 100), border_radius=8)
-            pygame.draw.rect(bg, (80, 50, 30), (80, 310, 480, 100), width=3, border_radius=8)
-            # Small bench
-            pygame.draw.rect(bg, (110, 80, 50), (480, 290, 80, 12))
-            pygame.draw.rect(bg, (90, 60, 30), (485, 302, 8, 25))
-            pygame.draw.rect(bg, (90, 60, 30), (547, 302, 8, 25))
+            # Ground level fence
+            pygame.draw.rect(bg, (120, 90, 60), (0, 355, self.width, 10))
+            for x in range(30, 610, 55):
+                pygame.draw.rect(bg, (100, 70, 40), (x, 340, 8, 30))
+            # Big garden bed
+            pygame.draw.rect(bg, (101, 67, 33), (60, 300, 520, 55), border_radius=6)
+            pygame.draw.rect(bg, (80, 50, 30), (60, 300, 520, 55), width=3, border_radius=6)
+            # Small bench on right
+            pygame.draw.rect(bg, (110, 80, 50), (500, 280, 70, 10))
+            pygame.draw.rect(bg, (90, 60, 30), (505, 290, 8, 22))
+            pygame.draw.rect(bg, (90, 60, 30), (557, 290, 8, 22))
 
         elif loc == "sweeties_candy_shop":
+            # Fixed: Shorter, more shop-like building
             pygame.draw.rect(bg, (255, 235, 240), (0, 260, self.width, 220))
-            # Shop building
-            pygame.draw.rect(bg, (200, 50, 70), (150, 220, 340, 140), border_radius=8)
-            # Awning with stripes
-            pygame.draw.polygon(bg, (210, 180, 140), [(140, 220), (320, 175), (500, 220)])
-            for i in range(6):
-                stripe_x = 155 + i * 52
-                pygame.draw.line(bg, (255, 200, 220), (stripe_x, 195), (stripe_x + 35, 195), 4)
+            # Shop building (shorter and wider)
+            pygame.draw.rect(bg, (200, 50, 70), (140, 280, 360, 110), border_radius=8)
+            # Awning
+            pygame.draw.polygon(bg, (210, 180, 140), [(130, 280), (320, 240), (510, 280)])
+            for i in range(7):
+                stripe_x = 145 + i * 48
+                pygame.draw.line(bg, (255, 200, 220), (stripe_x, 255), (stripe_x + 32, 255), 3)
             # Door
-            pygame.draw.rect(bg, (120, 70, 40), (280, 280, 60, 80))
-            pygame.draw.circle(bg, (255, 220, 100), (325, 320), 6)
-            # Candy decorations on sides
-            for dx in [170, 470]:
-                pygame.draw.circle(bg, (255, 150, 200), (dx, 260), 12)
-                pygame.draw.circle(bg, (150, 220, 255), (dx, 290), 10)
+            pygame.draw.rect(bg, (120, 70, 40), (275, 310, 70, 80))
+            pygame.draw.circle(bg, (255, 220, 100), (328, 350), 7)
+            # Candy decorations (better placed)
+            pygame.draw.circle(bg, (255, 150, 200), (170, 300), 14)
+            pygame.draw.circle(bg, (150, 220, 255), (470, 300), 14)
+            pygame.draw.circle(bg, (255, 200, 100), (180, 330), 10)
+            pygame.draw.circle(bg, (100, 200, 255), (460, 330), 10)
 
         elif loc == "gens_garden":
-            pygame.draw.rect(bg, (230, 245, 255), (0, 260, self.width, 220))
-            # Garden border / path
-            pygame.draw.rect(bg, (90, 150, 210), (150, 250, 340, 120), border_radius=10)
-            pygame.draw.rect(bg, (60, 120, 80), (140, 245, 360, 130), width=5, border_radius=12)
-            # Trellis / plant supports
-            for x in [180, 280, 380, 480]:
-                pygame.draw.line(bg, (120, 90, 60), (x, 255), (x, 360), 3)
-            for y in [280, 320]:
-                pygame.draw.line(bg, (120, 90, 60), (170, y), (490, y), 2)
-            # Background flowers
-            for fx, fy, c in [(200, 300, (255,100,150)), (320, 310, (255,200,80)), (420, 295, (150,200,255)) ]:
-                pygame.draw.circle(bg, c, (fx, fy), 8)
+            # Fixed: Actually looks like a garden now
+            pygame.draw.rect(bg, (140, 190, 120), (0, 260, self.width, 220))
+            # Garden plot
+            pygame.draw.rect(bg, (120, 85, 55), (80, 290, 480, 80), border_radius=8)
+            pygame.draw.rect(bg, (90, 60, 35), (80, 290, 480, 80), width=4, border_radius=8)
+            # Plant rows
+            for row in range(3):
+                y = 305 + row * 22
+                pygame.draw.line(bg, (60, 130, 50), (100, y), (540, y), 2)
+            # Simple plant supports
+            for x in [140, 240, 340, 440]:
+                pygame.draw.line(bg, (130, 95, 60), (x, 285), (x, 365), 3)
+            # Some flowers
+            pygame.draw.circle(bg, (255, 100, 150), (160, 310), 7)
+            pygame.draw.circle(bg, (255, 200, 80), (260, 320), 7)
+            pygame.draw.circle(bg, (150, 180, 255), (360, 308), 7)
+            pygame.draw.circle(bg, (255, 150, 200), (460, 318), 7)
 
         else:
             pygame.draw.rect(bg, (50, 45, 70), (0, 260, self.width, 220))

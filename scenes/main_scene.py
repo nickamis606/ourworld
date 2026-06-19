@@ -270,53 +270,47 @@ class MainScene(BaseScene):
                 pygame.draw.circle(bg, (255, 200, 80), (fx, fy), 3)
 
         elif loc == "backyard":
-            # Fixed: Lower fence + bigger garden bed
             pygame.draw.rect(bg, (140, 190, 120), (0, 260, self.width, 220))
-            # Ground level fence
             pygame.draw.rect(bg, (120, 90, 60), (0, 355, self.width, 10))
             for x in range(30, 610, 55):
                 pygame.draw.rect(bg, (100, 70, 40), (x, 340, 8, 30))
-            # Big garden bed
             pygame.draw.rect(bg, (101, 67, 33), (60, 300, 520, 55), border_radius=6)
             pygame.draw.rect(bg, (80, 50, 30), (60, 300, 520, 55), width=3, border_radius=6)
-            # Small bench on right
             pygame.draw.rect(bg, (110, 80, 50), (500, 280, 70, 10))
             pygame.draw.rect(bg, (90, 60, 30), (505, 290, 8, 22))
             pygame.draw.rect(bg, (90, 60, 30), (557, 290, 8, 22))
 
         elif loc == "sweeties_candy_shop":
-            # Fixed: Shorter, more shop-like building
+            # Much better version - shorter building, better proportions
             pygame.draw.rect(bg, (255, 235, 240), (0, 260, self.width, 220))
-            # Shop building (shorter and wider)
-            pygame.draw.rect(bg, (200, 50, 70), (140, 280, 360, 110), border_radius=8)
-            # Awning
-            pygame.draw.polygon(bg, (210, 180, 140), [(130, 280), (320, 240), (510, 280)])
-            for i in range(7):
-                stripe_x = 145 + i * 48
-                pygame.draw.line(bg, (255, 200, 220), (stripe_x, 255), (stripe_x + 32, 255), 3)
+            # Shop building - shorter and more grounded
+            pygame.draw.rect(bg, (200, 50, 70), (130, 300, 380, 90), border_radius=10)
+            # Awning (lower and attached to building)
+            pygame.draw.polygon(bg, (210, 180, 140), [(120, 300), (320, 265), (520, 300)])
+            for i in range(8):
+                stripe_x = 135 + i * 45
+                pygame.draw.line(bg, (255, 200, 220), (stripe_x, 278), (stripe_x + 30, 278), 3)
             # Door
-            pygame.draw.rect(bg, (120, 70, 40), (275, 310, 70, 80))
-            pygame.draw.circle(bg, (255, 220, 100), (328, 350), 7)
-            # Candy decorations (better placed)
-            pygame.draw.circle(bg, (255, 150, 200), (170, 300), 14)
-            pygame.draw.circle(bg, (150, 220, 255), (470, 300), 14)
-            pygame.draw.circle(bg, (255, 200, 100), (180, 330), 10)
-            pygame.draw.circle(bg, (100, 200, 255), (460, 330), 10)
+            pygame.draw.rect(bg, (110, 65, 35), (280, 325, 70, 65))
+            pygame.draw.circle(bg, (255, 215, 90), (335, 358), 6)
+            # Big candy decorations on sides (more visible)
+            pygame.draw.circle(bg, (255, 130, 190), (155, 320), 18)
+            pygame.draw.circle(bg, (130, 200, 255), (485, 320), 18)
+            pygame.draw.circle(bg, (255, 190, 90), (165, 350), 12)
+            pygame.draw.circle(bg, (90, 180, 255), (475, 350), 12)
+            # Small windows
+            pygame.draw.rect(bg, (255, 250, 220), (160, 310, 25, 25), border_radius=3)
+            pygame.draw.rect(bg, (255, 250, 220), (455, 310, 25, 25), border_radius=3)
 
         elif loc == "gens_garden":
-            # Fixed: Actually looks like a garden now
             pygame.draw.rect(bg, (140, 190, 120), (0, 260, self.width, 220))
-            # Garden plot
             pygame.draw.rect(bg, (120, 85, 55), (80, 290, 480, 80), border_radius=8)
             pygame.draw.rect(bg, (90, 60, 35), (80, 290, 480, 80), width=4, border_radius=8)
-            # Plant rows
             for row in range(3):
                 y = 305 + row * 22
                 pygame.draw.line(bg, (60, 130, 50), (100, y), (540, y), 2)
-            # Simple plant supports
             for x in [140, 240, 340, 440]:
                 pygame.draw.line(bg, (130, 95, 60), (x, 285), (x, 365), 3)
-            # Some flowers
             pygame.draw.circle(bg, (255, 100, 150), (160, 310), 7)
             pygame.draw.circle(bg, (255, 200, 80), (260, 320), 7)
             pygame.draw.circle(bg, (150, 180, 255), (360, 308), 7)

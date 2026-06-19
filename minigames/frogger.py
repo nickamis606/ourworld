@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-OurWorld Arcade - Frogger (polished throwback version)
-Playable speeds + significantly better graphics.
+OurWorld Arcade - Frogger (fixed log carrying)
 """
 
 import pygame
@@ -14,7 +13,6 @@ CELL_SIZE = 20
 GRID_COLS = SCREEN_WIDTH // CELL_SIZE
 GRID_ROWS = SCREEN_HEIGHT // CELL_SIZE
 
-# Polished retro palette
 BG = (12, 20, 12)
 GRASS_DARK = (35, 95, 35)
 GRASS_LIGHT = (55, 130, 55)
@@ -23,7 +21,7 @@ ROAD_LINE = (230, 230, 230)
 WATER = (20, 60, 115)
 WATER_LINE = (50, 110, 160)
 CAR_COLORS = [(195, 35, 35), (35, 130, 195), (215, 165, 35), (155, 45, 175)]
-CAR_CABIN = (55, 55, 65)   # <-- Added back
+CAR_CABIN = (55, 55, 65)
 LOG_BROWN = (105, 65, 30)
 LOG_LIGHT = (145, 100, 55)
 FROG_GREEN = (65, 185, 65)
@@ -85,7 +83,6 @@ class FroggerGame(MinigameBase):
         self.show_instructions = True
         self.instruction_timer = 0
 
-        # Playable speeds
         self.lanes = [
             {'y': 18, 'speed': 0.95, 'dir': 1,  'is_water': False},
             {'y': 16, 'speed': 0.75, 'dir': -1, 'is_water': False},
@@ -192,21 +189,30 @@ class FroggerGame(MinigameBase):
             self.running = False
 
     def _check_collisions(self):
+        # Road cars
         for car in self.cars:
-            if car['y'] == self.frog_y and car['x'] <= self.frog_x < car['x'] + car['width']:
-                self._lose_life()
-                return
+            if car['y'] == self.frog_y:
+                if car['x'] <= self.frog_x < car['x'] + car['width']:
+                    self._lose_life()
+                    return
 
-        on_log = False
+        # Water / logs - fixed carrying logic
         lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
 
-        if lane and lane.get('is_water'):
+        if lane and lane.get('is_water', False):
+            on_log = False
             for log in self.logs:
-                if log['y'] == self.frog_y and log['x'] <= self.frog_x < log['x'] + log['width']:
-                    on_log = True
-                    self.frog_x = self.frog_x + log['speed'] * log['dir'] * 0.55
-                    self.frog_x = max(0, min(GRID_COLS - 1, int(self.frog_x)))
-                    break
+                if log['y'] == self.frog_y:
+                    # More forgiving overlap check
+                    log_left = log['x']
+                    log_right = log['x'] + log['width']
+                    if log_left - 0.5 <= self.frog_x < log_right + 0.5:
+                        on_log = True
+                        # Carry the frog smoothly
+                        self.frog_x = self.frog_x + log['speed'] * log['dir'] * 0.55
+                        self.frog_x = max(0, min(GRID_COLS - 1, int(round(self.frog_x))))
+                        break
+
             if not on_log:
                 self._lose_life()
 

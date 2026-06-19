@@ -2,7 +2,8 @@
 """
 LocationBackground
 
-Home layer positions tuned per user feedback (2026-06-19).
+- Auto-scales layers
+- Excludes 'pot.png' and 'decorations.png' (they are conditional)
 """
 
 import pygame
@@ -19,7 +20,7 @@ class LocationBackground:
         self.layers: Dict[str, Dict] = {}
         self.use_asset = False
         self.assets_path = os.path.join("assets", "backgrounds")
-        self.max_layer_height = 220
+        self.max_layer_height = 200
 
     def load(self, location: str):
         self.location = location
@@ -43,7 +44,8 @@ class LocationBackground:
                     if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
                         name = os.path.splitext(filename)[0]
 
-                        if name == "decorations":
+                        # These are handled conditionally elsewhere
+                        if name in ("decorations", "pot"):
                             continue
 
                         layer_path = os.path.join(layers_dir, filename)
@@ -63,13 +65,11 @@ class LocationBackground:
                             pass
 
     def _get_home_position(self, name: str) -> Tuple[int, int]:
-        """Positions tuned 2026-06-19 based on user feedback."""
         positions = {
-            "rug": (120, 310),           # Moved left a bit
+            "rug": (120, 310),
             "window": (470, 55),
-            "shelf": (30, 90),           # Slightly left + up
-            "table": (380, 295),         # Moved significantly to the right
-            "pot": (410, 268),           # Sitting on the table
+            "shelf": (30, 90),
+            "table": (380, 295),
         }
         return positions.get(name, (100, 200))
 
@@ -79,8 +79,7 @@ class LocationBackground:
 
         surface.blit(self.base_surface, (0, 0))
 
-        # Draw order (back to front)
-        order = ["rug", "table", "pot", "shelf", "window"]
+        order = ["rug", "table", "shelf", "window"]
         for name in order:
             if name in self.layers:
                 data = self.layers[name]

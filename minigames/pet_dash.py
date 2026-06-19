@@ -264,4 +264,4 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
     game = PetDash(screen, clock)
     game.run()
-    pygame.quit()}
+    pygame.quit()

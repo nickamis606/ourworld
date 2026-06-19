@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 OurWorld Arcade - Frogger
-Clean implementation based on proven patterns from popular open-source Pygame Frogger games
-(adapted from common working structures in repos like rhrlima/frogger and TokyoEdtech-style examples).
+Clean implementation using standard working patterns from popular open source Pygame Frogger clones.
 Logs carry the frog correctly.
 """
 
@@ -16,23 +15,23 @@ CELL_SIZE = 20
 GRID_COLS = SCREEN_WIDTH // CELL_SIZE
 GRID_ROWS = SCREEN_HEIGHT // CELL_SIZE
 
-BG = (12, 20, 12)
-GRASS_DARK = (35, 95, 35)
-GRASS_LIGHT = (55, 130, 55)
-ROAD = (40, 40, 45)
-ROAD_LINE = (230, 230, 230)
-WATER = (20, 60, 115)
-WATER_LINE = (50, 110, 160)
-CAR_COLORS = [(195, 35, 35), (35, 130, 195), (215, 165, 35), (155, 45, 175)]
-CAR_CABIN = (55, 55, 65)
-LOG_BROWN = (105, 65, 30)
-LOG_LIGHT = (145, 100, 55)
-FROG_GREEN = (65, 185, 65)
-FROG_DARK = (35, 105, 35)
-FROG_EYE = (255, 255, 220)
+# Colors
+BG = (15, 25, 15)
+GRASS = (50, 130, 50)
+ROAD = (45, 45, 50)
+ROAD_LINE = (240, 240, 240)
+WATER = (25, 75, 140)
+WATER_LINE = (60, 120, 180)
+CAR_COLORS = [(200, 40, 40), (40, 140, 200), (220, 180, 40), (170, 50, 180)]
+CAR_CABIN = (50, 50, 60)
+LOG = (110, 70, 35)
+LOG_DETAIL = (150, 105, 60)
+FROG = (70, 190, 70)
+FROG_DARK = (40, 110, 40)
+FROG_EYE = (255, 255, 230)
 TEXT = (250, 255, 250)
-ACCENT = (255, 210, 70)
-SAFE = (30, 85, 30)
+ACCENT = (255, 215, 80)
+SAFE = (35, 95, 35)
 
 
 @dataclass
@@ -86,13 +85,14 @@ class FroggerGame(MinigameBase):
         self.show_instructions = True
         self.instruction_timer = 0
 
+        # Lanes: y, speed, direction, is_water
         self.lanes = [
-            {'y': 18, 'speed': 0.9, 'dir': 1,  'is_water': False},
-            {'y': 16, 'speed': 0.7, 'dir': -1, 'is_water': False},
-            {'y': 14, 'speed': 1.0, 'dir': 1,  'is_water': False},
-            {'y': 10, 'speed': 0.6, 'dir': -1, 'is_water': True},
-            {'y': 8,  'speed': 0.8, 'dir': 1,  'is_water': True},
-            {'y': 6,  'speed': 0.5, 'dir': -1, 'is_water': True},
+            {'y': 18, 'speed': 0.85, 'dir': 1,  'is_water': False},
+            {'y': 16, 'speed': 0.65, 'dir': -1, 'is_water': False},
+            {'y': 14, 'speed': 0.95, 'dir': 1,  'is_water': False},
+            {'y': 10, 'speed': 0.55, 'dir': -1, 'is_water': True},
+            {'y': 8,  'speed': 0.75, 'dir': 1,  'is_water': True},
+            {'y': 6,  'speed': 0.45, 'dir': -1, 'is_water': True},
         ]
 
         self.cars = []
@@ -100,7 +100,7 @@ class FroggerGame(MinigameBase):
         self._spawn_vehicles()
 
         self.last_move_time = 0
-        self.move_cooldown = 200
+        self.move_cooldown = 190
 
     def _spawn_vehicles(self):
         self.cars.clear()
@@ -116,7 +116,7 @@ class FroggerGame(MinigameBase):
             spacing = GRID_COLS // count
 
             for i in range(count):
-                x = (i * spacing + random.randint(0, spacing - 3)) % GRID_COLS
+                x = (i * spacing + random.randint(0, spacing - 2)) % GRID_COLS
                 if is_water:
                     self.logs.append({'x': float(x), 'y': y, 'width': 5, 'speed': speed, 'dir': direction})
                 else:
@@ -198,7 +198,7 @@ class FroggerGame(MinigameBase):
                 self._lose_life()
                 return
 
-        # Water - reliable log carrying (standard working pattern)
+        # Water - proper carrying (standard working pattern)
         lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
 
         if lane and lane.get('is_water', False):
@@ -207,10 +207,10 @@ class FroggerGame(MinigameBase):
                 if log['y'] == self.frog_y:
                     log_left = log['x']
                     log_right = log['x'] + log['width']
-                    if log_left - 0.25 <= self.frog_x < log_right + 0.25:
+                    if log_left - 0.2 <= self.frog_x < log_right + 0.2:
                         on_log = True
-                        # Carry the frog with the log (classic behavior)
-                        self.frog_x += log['speed'] * log['dir'] * 0.65
+                        # Carry frog with the log (correct direction and speed)
+                        self.frog_x += log['speed'] * log['dir'] * 0.6
                         self.frog_x = max(0, min(GRID_COLS - 1, int(round(self.frog_x))))
                         break
 
@@ -234,63 +234,53 @@ class FroggerGame(MinigameBase):
             cy = y * CELL_SIZE
 
             if y >= 17:
-                pygame.draw.rect(target, GRASS_DARK, (0, cy, SCREEN_WIDTH, CELL_SIZE))
-                for gx in range(0, SCREEN_WIDTH, 28):
-                    pygame.draw.line(target, GRASS_LIGHT, (gx, cy + 3), (gx + 12, cy + CELL_SIZE - 4), 2)
-
+                pygame.draw.rect(target, GRASS, (0, cy, SCREEN_WIDTH, CELL_SIZE))
             elif y in [18, 16, 14]:
                 pygame.draw.rect(target, ROAD, (0, cy, SCREEN_WIDTH, CELL_SIZE))
                 for gx in range(0, SCREEN_WIDTH, 45):
                     pygame.draw.rect(target, ROAD_LINE, (gx, cy + 6, 22, 2))
                     pygame.draw.rect(target, ROAD_LINE, (gx, cy + CELL_SIZE - 8, 22, 2))
-
             elif y in [10, 8, 6]:
                 pygame.draw.rect(target, WATER, (0, cy, SCREEN_WIDTH, CELL_SIZE))
-                offset = (pygame.time.get_ticks() // 70) % 35
-                for gx in range(-35, SCREEN_WIDTH, 35):
-                    pygame.draw.line(target, WATER_LINE, (gx + offset, cy + 5), (gx + 20 + offset, cy + 5), 2)
-                    pygame.draw.line(target, WATER_LINE, (gx + offset + 8, cy + CELL_SIZE - 6), (gx + 28 + offset + 8, cy + CELL_SIZE - 6), 2)
-
+                offset = (pygame.time.get_ticks() // 65) % 32
+                for gx in range(-32, SCREEN_WIDTH, 32):
+                    pygame.draw.line(target, WATER_LINE, (gx + offset, cy + 5), (gx + 18 + offset, cy + 5), 2)
             elif y <= 2:
                 pygame.draw.rect(target, SAFE, (0, cy, SCREEN_WIDTH, CELL_SIZE))
-                for gx in range(40, SCREEN_WIDTH - 40, 80):
-                    pygame.draw.ellipse(target, (20, 70, 20), (gx, cy + 4, 28, 12))
 
         for car in self.cars:
             x = int(car['x'] * CELL_SIZE)
             y = car['y'] * CELL_SIZE + 2
             w = car['width'] * CELL_SIZE - 4
-            pygame.draw.rect(target, car['color'], (x, y, w, CELL_SIZE - 6), border_radius=5)
-            pygame.draw.rect(target, CAR_CABIN, (x + 5, y + 4, w - 10, CELL_SIZE - 14), border_radius=3)
-            pygame.draw.ellipse(target, (25, 25, 25), (x + 3, y + CELL_SIZE - 7, 7, 6))
-            pygame.draw.ellipse(target, (25, 25, 25), (x + w - 10, y + CELL_SIZE - 7, 7, 6))
+            pygame.draw.rect(target, car['color'], (x, y, w, CELL_SIZE - 6), border_radius=4)
+            pygame.draw.rect(target, CAR_CABIN, (x + 5, y + 4, w - 10, CELL_SIZE - 14), border_radius=2)
+            pygame.draw.ellipse(target, (20, 20, 20), (x + 2, y + CELL_SIZE - 6, 6, 5))
+            pygame.draw.ellipse(target, (20, 20, 20), (x + w - 8, y + CELL_SIZE - 6, 6, 5))
 
         for log in self.logs:
             x = int(log['x'] * CELL_SIZE)
             y = log['y'] * CELL_SIZE + 3
             w = log['width'] * CELL_SIZE - 6
-            pygame.draw.rect(target, LOG_BROWN, (x, y, w, CELL_SIZE - 8), border_radius=6)
-            for sx in range(6, w - 6, 14):
-                pygame.draw.line(target, LOG_LIGHT, (x + sx, y + 3), (x + sx, y + CELL_SIZE - 11), 2)
+            pygame.draw.rect(target, LOG, (x, y, w, CELL_SIZE - 8), border_radius=5)
+            for sx in range(5, w - 5, 12):
+                pygame.draw.line(target, LOG_DETAIL, (x + sx, y + 2), (x + sx, y + CELL_SIZE - 10), 2)
 
         fx = self.frog_x * CELL_SIZE + 1
         fy = self.frog_y * CELL_SIZE + 1
-        pygame.draw.ellipse(target, FROG_GREEN, (fx + 2, fy + 6, CELL_SIZE - 4, CELL_SIZE - 10))
-        pygame.draw.ellipse(target, FROG_GREEN, (fx + 5, fy + 1, CELL_SIZE - 10, CELL_SIZE - 6))
-        pygame.draw.ellipse(target, FROG_DARK, (fx + 5, fy + 1, CELL_SIZE - 10, CELL_SIZE - 6), 2)
-        pygame.draw.circle(target, FROG_EYE, (fx + 9, fy + 5), 4)
-        pygame.draw.circle(target, FROG_EYE, (fx + 14, fy + 5), 4)
-        pygame.draw.circle(target, (20, 20, 20), (fx + 10, fy + 5), 2)
-        pygame.draw.circle(target, (20, 20, 20), (fx + 15, fy + 5), 2)
-        pygame.draw.line(target, FROG_DARK, (fx + 4, fy + CELL_SIZE - 5), (fx + 8, fy + CELL_SIZE - 2), 2)
-        pygame.draw.line(target, FROG_DARK, (fx + CELL_SIZE - 6, fy + CELL_SIZE - 5), (fx + CELL_SIZE - 10, fy + CELL_SIZE - 2), 2)
+        pygame.draw.ellipse(target, FROG, (fx + 2, fy + 5, CELL_SIZE - 4, CELL_SIZE - 9))
+        pygame.draw.ellipse(target, FROG, (fx + 5, fy, CELL_SIZE - 10, CELL_SIZE - 5))
+        pygame.draw.ellipse(target, FROG_DARK, (fx + 5, fy, CELL_SIZE - 10, CELL_SIZE - 5), 2)
+        pygame.draw.circle(target, FROG_EYE, (fx + 9, fy + 4), 3)
+        pygame.draw.circle(target, FROG_EYE, (fx + 14, fy + 4), 3)
+        pygame.draw.circle(target, (20, 20, 20), (fx + 10, fy + 4), 1)
+        pygame.draw.circle(target, (20, 20, 20), (fx + 15, fy + 4), 1)
 
         target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT), (12, 8))
         target.blit(self.small_font.render(f"LIVES: {self.lives}", True, TEXT), (12, 36))
         target.blit(self.small_font.render("OURWORLD ARCADE • FROGGER", True, ACCENT), (SCREEN_WIDTH - 250, 10))
 
         if self.show_instructions:
-            inst = self.small_font.render("Arrows/WASD to move  •  Cross the road and river safely!", True, (200, 230, 200))
+            inst = self.small_font.render("Arrows/WASD to move  •  Reach the top safely!", True, (200, 230, 200))
             target.blit(inst, (SCREEN_WIDTH//2 - inst.get_width()//2, 65))
 
         if self.game_over:
@@ -298,7 +288,7 @@ class FroggerGame(MinigameBase):
             target.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, 165))
 
         if self.won:
-            msg = self.big_font.render("YOU CROSSED! GREAT JOB!", True, (110, 255, 150))
+            msg = self.big_font.render("NICE! YOU MADE IT ACROSS!", True, (110, 255, 150))
             target.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, 165))
 
 

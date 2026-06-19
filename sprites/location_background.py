@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-LocationBackground - Asset-based background system.
+LocationBackground
 
-Home layers are positioned to look decent without overlapping UI.
+IMPORTANT: All layer images should be scaled down if too big.
+We normalize layer height (similar to how PetSprite normalizes pet sprites).
 """
 
 import pygame
@@ -19,6 +20,9 @@ class LocationBackground:
         self.layers: Dict[str, Dict] = {}
         self.use_asset = False
         self.assets_path = os.path.join("assets", "backgrounds")
+
+        # Max height for any layer (prevents huge images)
+        self.max_layer_height = 220
 
     def load(self, location: str):
         self.location = location
@@ -42,13 +46,19 @@ class LocationBackground:
                     if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
                         name = os.path.splitext(filename)[0]
 
-                        # Skip decorations for now (contains multiple objects)
                         if name == "decorations":
                             continue
 
                         layer_path = os.path.join(layers_dir, filename)
                         try:
                             layer_img = pygame.image.load(layer_path).convert_alpha()
+
+                            # === SCALE LAYER IF TOO BIG (like we do with pets) ===
+                            if layer_img.get_height() > self.max_layer_height:
+                                scale = self.max_layer_height / layer_img.get_height()
+                                new_width = int(layer_img.get_width() * scale)
+                                layer_img = pygame.transform.smoothscale(layer_img, (new_width, self.max_layer_height))
+
                             self.layers[name] = {
                                 "surface": layer_img,
                                 "pos": self._get_home_position(name)
@@ -57,12 +67,11 @@ class LocationBackground:
                             pass
 
     def _get_home_position(self, name: str) -> Tuple[int, int]:
-        """Carefully tuned positions so layers don't overlap UI or look broken."""
         positions = {
-            "rug": (160, 305),
+            "rug": (180, 310),
             "window": (470, 55),
-            "shelf": (35, 95),
-            "table": (250, 295),   # Moved up so it doesn't clip into buttons
+            "shelf": (40, 95),
+            "table": (260, 300),
         }
         return positions.get(name, (100, 200))
 
@@ -72,7 +81,6 @@ class LocationBackground:
 
         surface.blit(self.base_surface, (0, 0))
 
-        # Draw in this order
         order = ["rug", "table", "shelf", "window"]
         for name in order:
             if name in self.layers:

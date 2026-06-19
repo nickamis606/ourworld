@@ -2,8 +2,7 @@
 """
 LocationBackground
 
-IMPORTANT: All layer images should be scaled down if too big.
-We normalize layer height (similar to how PetSprite normalizes pet sprites).
+Home layer positions tuned per user feedback (2026-06-19).
 """
 
 import pygame
@@ -20,8 +19,6 @@ class LocationBackground:
         self.layers: Dict[str, Dict] = {}
         self.use_asset = False
         self.assets_path = os.path.join("assets", "backgrounds")
-
-        # Max height for any layer (prevents huge images)
         self.max_layer_height = 220
 
     def load(self, location: str):
@@ -53,7 +50,6 @@ class LocationBackground:
                         try:
                             layer_img = pygame.image.load(layer_path).convert_alpha()
 
-                            # === SCALE LAYER IF TOO BIG (like we do with pets) ===
                             if layer_img.get_height() > self.max_layer_height:
                                 scale = self.max_layer_height / layer_img.get_height()
                                 new_width = int(layer_img.get_width() * scale)
@@ -67,11 +63,13 @@ class LocationBackground:
                             pass
 
     def _get_home_position(self, name: str) -> Tuple[int, int]:
+        """Positions tuned 2026-06-19 based on user feedback."""
         positions = {
-            "rug": (180, 310),
+            "rug": (120, 310),           # Moved left a bit
             "window": (470, 55),
-            "shelf": (40, 95),
-            "table": (260, 300),
+            "shelf": (30, 90),           # Slightly left + up
+            "table": (380, 295),         # Moved significantly to the right
+            "pot": (410, 268),           # Sitting on the table
         }
         return positions.get(name, (100, 200))
 
@@ -81,7 +79,8 @@ class LocationBackground:
 
         surface.blit(self.base_surface, (0, 0))
 
-        order = ["rug", "table", "shelf", "window"]
+        # Draw order (back to front)
+        order = ["rug", "table", "pot", "shelf", "window"]
         for name in order:
             if name in self.layers:
                 data = self.layers[name]

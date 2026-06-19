@@ -2,7 +2,7 @@
 """
 MainScene - Primary gameplay scene.
 
-Uses LocationBackground with layers + ActionAnimator.
+Home decoration (pot) is now only drawn when home_decorated == True.
 """
 
 import pygame
@@ -41,7 +41,7 @@ class MainScene(BaseScene):
         self.arcade_panel = ArcadePanel(self.small_font, self.tiny_font)
         self.map_overlay = MapOverlay(self.small_font, self.font)
 
-        self.pet_sprite = PetSprite(pet_config, size=0.95, pos=(340, 280))  # Better default grounded position
+        self.pet_sprite = PetSprite(pet_config, size=0.95, pos=(340, 300))
         self.pet_bob = 0.0
 
         self.location_bg = LocationBackground(self.width, self.height)
@@ -157,7 +157,6 @@ class MainScene(BaseScene):
             self._prepare_location_background(loc)
             self._load_location_background(loc)
 
-            # Adjust pet position when entering Home so it stands on the floor
             if loc == "home":
                 self.pet_sprite.pos = (340, 300)
             else:
@@ -187,7 +186,6 @@ class MainScene(BaseScene):
             self.stats_bar.draw(surface, needs, self.game_state.pet.coins, total_seeds)
             return
 
-        # Draw background with layers if asset exists
         if self.location_bg.has_asset():
             self.location_bg.draw(surface)
         else:
@@ -310,12 +308,24 @@ class MainScene(BaseScene):
     def _draw_home_decoration(self, surface):
         if not self.game_state.pet.home_decorated:
             return
-        base_x, base_y = 480, 320
-        pygame.draw.rect(surface, (180, 120, 80), (base_x, base_y, 50, 45), border_radius=4)
-        pygame.draw.line(surface, (34, 120, 34), (base_x + 15, base_y), (base_x + 15, base_y - 35), 3)
-        pygame.draw.line(surface, (34, 120, 34), (base_x + 25, base_y), (base_x + 25, base_y - 40), 3)
-        pygame.draw.circle(surface, (255, 100, 150), (base_x + 15, base_y - 42), 8)
-        pygame.draw.circle(surface, (255, 200, 80), (base_x + 25, base_y - 48), 8)
+
+        # Draw the pot (vase) only when home is decorated
+        # Positioned on the table
+        pot_path = os.path.join("assets", "backgrounds", "home", "layers", "pot.png")
+        if os.path.exists(pot_path):
+            try:
+                pot = pygame.image.load(pot_path).convert_alpha()
+                # Scale it down so it sits nicely on the table
+                target_height = 85
+                if pot.get_height() > target_height:
+                    scale = target_height / pot.get_height()
+                    new_w = int(pot.get_width() * scale)
+                    pot = pygame.transform.smoothscale(pot, (new_w, target_height))
+
+                # Position on the table (right side of screen)
+                surface.blit(pot, (395, 255))
+            except Exception:
+                pass
 
     def _draw_garden_plants(self, surface):
         bed_x, bed_y = 100, 305

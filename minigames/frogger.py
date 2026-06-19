@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-OurWorld Arcade - Frogger
-Clean implementation adapted from standard working open source Pygame Frogger patterns.
-Logs carry the frog correctly.
+OurWorld Arcade - Frogger (with proper levels)
+Multiple homes, level progression, increasing difficulty.
 """
 
 import pygame
@@ -29,6 +28,8 @@ LOG_DETAIL = (150, 105, 60)
 FROG = (70, 190, 70)
 FROG_DARK = (40, 110, 40)
 FROG_EYE = (255, 255, 230)
+HOME_EMPTY = (40, 100, 40)
+HOME_FILLED = (255, 215, 80)
 TEXT = (250, 255, 250)
 ACCENT = (255, 215, 80)
 SAFE = (35, 95, 35)
@@ -48,7 +49,7 @@ class MinigameBase:
         self.running = True
         self.score = 0
         self.font = pygame.font.SysFont("arial", 24)
-        self.big_font = pygame.font.SysFont("arial", 38, bold=True)
+        self.big_font = pygame.font.SysFont("arial", 36, bold=True)
         self.small_font = pygame.font.SysFont("arial", 15)
 
     def handle_key(self, key): pass
@@ -80,19 +81,16 @@ class FroggerGame(MinigameBase):
         self.frog_y = GRID_ROWS - 2
         self.lives = 3
         self.score = 0
+        self.level = 1
+        self.homes = [False] * 5          # 5 homes at top
+        self.home_positions = [4, 10, 16, 22, 28]  # x positions for homes
         self.game_over = False
         self.won = False
         self.show_instructions = True
         self.instruction_timer = 0
 
-        self.lanes = [
-            {'y': 18, 'speed': 0.85, 'dir': 1,  'is_water': False},
-            {'y': 16, 'speed': 0.65, 'dir': -1, 'is_water': False},
-            {'y': 14, 'speed': 0.95, 'dir': 1,  'is_water': False},
-            {'y': 10, 'speed': 0.55, 'dir': -1, 'is_water': True},
-            {'y': 8,  'speed': 0.75, 'dir': 1,  'is_water': True},
-            {'y': 6,  'speed': 0.45, 'dir': -1, 'is_water': True},
-        ]
+        self.base_speeds = [0.85, 0.65, 0.95, 0.55, 0.75, 0.45]
+        self._update_level_speeds()
 
         self.cars = []
         self.logs = []
@@ -101,21 +99,26 @@ class FroggerGame(MinigameBase):
         self.last_move_time = 0
         self.move_cooldown = 190
 
+    def _update_level_speeds(self):
+        """Increase difficulty with level."""
+        multiplier = 1.0 + (self.level - 1) * 0.12
+        self.lane_speeds = [s * multiplier for s in self.base_speeds]
+
     def _spawn_vehicles(self):
         self.cars.clear()
         self.logs.clear()
 
-        for lane in self.lanes:
+        for i, lane in enumerate(self.lanes):
             y = lane['y']
-            speed = lane['speed']
+            speed = self.lane_speeds[i]
             direction = lane['dir']
             is_water = lane['is_water']
 
             count = 3 if is_water else 4
             spacing = GRID_COLS // count
 
-            for i in range(count):
-                x = (i * spacing + random.randint(0, spacing - 2)) % GRID_COLS
+            for j in range(count):
+                x = (j * spacing + random.randint(0, spacing - 2)) % GRID_COLS
                 if is_water:
                     self.logs.append({'x': float(x), 'y': y, 'width': 5, 'speed': speed, 'dir': direction})
                 else:
@@ -124,6 +127,17 @@ class FroggerGame(MinigameBase):
                         'speed': speed, 'dir': direction,
                         'color': random.choice(CAR_COLORS)
                     })
+
+    @property
+    def lanes(self):
+        return [
+            {'y': 18, 'dir': 1,  'is_water': False},
+            {'y': 16, 'dir': -1, 'is_water': False},
+            {'y': 14, 'dir': 1,  'is_water': False},
+            {'y': 10, 'dir': -1, 'is_water': True},
+            {'y': 8,  'dir': 1,  'is_water': True},
+            {'y': 6,  'dir': -1, 'is_water': True},
+        ]
 
     def handle_key(self, key):
         if self.game_over or self.won:
@@ -185,11 +199,6 @@ class FroggerGame(MinigameBase):
 
         self._check_collisions()
 
-        if self.frog_y <= 2:
-            self.won = True
-            self.score += 150
-            self.running = False
-
     def _check_collisions(self):
         # Cars
         for car in self.cars:
@@ -197,7 +206,7 @@ class FroggerGame(MinigameBase):
                 self._lose_life()
                 return
 
-        # Water - standard reliable log carrying
+        # Water - log carrying
         lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
 
         if lane and lane.get('is_water', False):
@@ -208,13 +217,40 @@ class FroggerGame(MinigameBase):
                     log_right = log['x'] + log['width']
                     if log_left - 0.2 <= self.frog_x < log_right + 0.2:
                         on_log = True
-                        # Carry frog with log (correct direction)
                         self.frog_x += log['speed'] * log['dir'] * 0.65
                         self.frog_x = max(0, min(GRID_COLS - 1, int(round(self.frog_x))))
                         break
 
             if not on_log:
                 self._lose_life()
+                return
+
+        # Top row - home checking
+        if self.frog_y <= 2:
+            self._try_fill_home()
+
+    def _try_fill_home(self):
+        for i, home_x in enumerate(self.home_positions):
+            if not self.homes[i] and abs(self.frog_x - home_x) <= 2:
+                # Fill home
+                self.homes[i] = True
+                self.score += 100 + (self.level * 20)
+
+                # Check if level complete
+                if all(self.homes):
+                    self.level += 1
+                    self.homes = [False] * 5
+                    self._update_level_speeds()
+                    self._spawn_vehicles()  # Respawn with new speeds
+                    self.score += 300  # Level complete bonus
+
+                # Reset frog
+                self.frog_x = GRID_COLS // 2
+                self.frog_y = GRID_ROWS - 2
+                return
+
+        # Landed on top but not in a home
+        self._lose_life()
 
     def _lose_life(self):
         self.lives -= 1
@@ -229,6 +265,7 @@ class FroggerGame(MinigameBase):
         target = screen or self.screen
         target.fill(BG)
 
+        # Background lanes
         for y in range(GRID_ROWS):
             cy = y * CELL_SIZE
 
@@ -247,6 +284,13 @@ class FroggerGame(MinigameBase):
             elif y <= 2:
                 pygame.draw.rect(target, SAFE, (0, cy, SCREEN_WIDTH, CELL_SIZE))
 
+        # Homes
+        for i, home_x in enumerate(self.home_positions):
+            color = HOME_FILLED if self.homes[i] else HOME_EMPTY
+            hx = home_x * CELL_SIZE
+            pygame.draw.ellipse(target, color, (hx, 2 * CELL_SIZE + 4, CELL_SIZE * 2, CELL_SIZE - 6))
+
+        # Cars
         for car in self.cars:
             x = int(car['x'] * CELL_SIZE)
             y = car['y'] * CELL_SIZE + 2
@@ -256,6 +300,7 @@ class FroggerGame(MinigameBase):
             pygame.draw.ellipse(target, (20, 20, 20), (x + 2, y + CELL_SIZE - 6, 6, 5))
             pygame.draw.ellipse(target, (20, 20, 20), (x + w - 8, y + CELL_SIZE - 6, 6, 5))
 
+        # Logs
         for log in self.logs:
             x = int(log['x'] * CELL_SIZE)
             y = log['y'] * CELL_SIZE + 3
@@ -264,6 +309,7 @@ class FroggerGame(MinigameBase):
             for sx in range(5, w - 5, 12):
                 pygame.draw.line(target, LOG_DETAIL, (x + sx, y + 2), (x + sx, y + CELL_SIZE - 10), 2)
 
+        # Frog
         fx = self.frog_x * CELL_SIZE + 1
         fy = self.frog_y * CELL_SIZE + 1
         pygame.draw.ellipse(target, FROG, (fx + 2, fy + 5, CELL_SIZE - 4, CELL_SIZE - 9))
@@ -274,12 +320,17 @@ class FroggerGame(MinigameBase):
         pygame.draw.circle(target, (20, 20, 20), (fx + 10, fy + 4), 1)
         pygame.draw.circle(target, (20, 20, 20), (fx + 15, fy + 4), 1)
 
+        # UI
         target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT), (12, 8))
-        target.blit(self.small_font.render(f"LIVES: {self.lives}", True, TEXT), (12, 36))
+        target.blit(self.small_font.render(f"LEVEL: {self.level}   LIVES: {self.lives}", True, TEXT), (12, 36))
         target.blit(self.small_font.render("OURWORLD ARCADE • FROGGER", True, ACCENT), (SCREEN_WIDTH - 250, 10))
 
+        # Home progress
+        filled = sum(self.homes)
+        target.blit(self.small_font.render(f"HOMES: {filled}/5", True, TEXT), (SCREEN_WIDTH - 120, 36))
+
         if self.show_instructions:
-            inst = self.small_font.render("Arrows/WASD to move  •  Reach the top safely!", True, (200, 230, 200))
+            inst = self.small_font.render("Arrows/WASD: Move   |   Fill all homes to advance level!", True, (200, 230, 200))
             target.blit(inst, (SCREEN_WIDTH//2 - inst.get_width()//2, 65))
 
         if self.game_over:
@@ -287,7 +338,7 @@ class FroggerGame(MinigameBase):
             target.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, 165))
 
         if self.won:
-            msg = self.big_font.render("NICE! YOU MADE IT ACROSS!", True, (110, 255, 150))
+            msg = self.big_font.render("YOU CROSSED! GREAT JOB!", True, (110, 255, 150))
             target.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, 165))
 
 

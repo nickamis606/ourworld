@@ -115,7 +115,7 @@ class PetSprite(pygame.sprite.Sprite):
 
         Returns a new surface of the same dimensions as the original.
         """
-        data = img.tobytes()
+        data = pygame.image.tobytes(img, "RGBA")
         w, h = img.get_size()
 
         # Find bounding box of non-transparent pixels

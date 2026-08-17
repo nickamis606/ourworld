@@ -40,9 +40,7 @@ class LocationBackground:
                 self.base_surface = pygame.transform.smoothscale(img, (self.width, self.height))
                 self.use_asset = True
                 has_base = True
-                print(f"[LocationBackground] loaded base: {base_path}")
-            except Exception as exc:
-                print(f"[LocationBackground] FAILED to load base {base_path}: {exc}")
+            except Exception:
                 pass
 
         has_layers = os.path.isdir(layers_dir)
@@ -52,7 +50,11 @@ class LocationBackground:
                     name = os.path.splitext(filename)[0]
 
                     if name in ("decorations", "pot"):
-                        continue
+                        # Conditional inclusion per location
+                        if self.location == "home":
+                            pass  # fall through to load below
+                        else:
+                            continue
 
                     layer_path = os.path.join(layers_dir, filename)
                     try:
@@ -80,18 +82,19 @@ class LocationBackground:
             "window": (470, 55),
             "shelf": (30, 90),
             "table": (380, 295),
+            "decorations": (200, 180),
+            "pot": (500, 320),
         }
         return positions.get(name, (100, 200))
 
     def draw(self, surface: pygame.Surface):
         if self.base_surface:
-            print(f"[LocationBackground] draw: using base for '{self.location}'")
             surface.blit(self.base_surface, (0, 0))
         elif self.use_asset:
             # Procedural fallback when no base image exists
             self._draw_procedural(surface)
 
-        order = ["rug", "table", "shelf", "window", "decorations"]
+        order = ["rug", "table", "shelf", "window", "pot", "decorations"]
         for name in order:
             if name in self.layers:
                 data = self.layers[name]

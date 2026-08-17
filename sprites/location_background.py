@@ -19,7 +19,9 @@ class LocationBackground:
         self.base_surface: Optional[pygame.Surface] = None
         self.layers: Dict[str, Dict] = {}
         self.use_asset = False
-        self.assets_path = os.path.join("assets", "backgrounds")
+        self.assets_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "assets", "backgrounds"
+        )
         self.max_layer_height = 200
 
     def load(self, location: str):
@@ -38,7 +40,9 @@ class LocationBackground:
                 self.base_surface = pygame.transform.smoothscale(img, (self.width, self.height))
                 self.use_asset = True
                 has_base = True
-            except Exception:
+                print(f"[LocationBackground] loaded base: {base_path}")
+            except Exception as exc:
+                print(f"[LocationBackground] FAILED to load base {base_path}: {exc}")
                 pass
 
         has_layers = os.path.isdir(layers_dir)
@@ -81,12 +85,13 @@ class LocationBackground:
 
     def draw(self, surface: pygame.Surface):
         if self.base_surface:
+            print(f"[LocationBackground] draw: using base for '{self.location}'")
             surface.blit(self.base_surface, (0, 0))
         elif self.use_asset:
             # Procedural fallback when no base image exists
             self._draw_procedural(surface)
 
-        order = ["rug", "table", "shelf", "window"]
+        order = ["rug", "table", "shelf", "window", "decorations"]
         for name in order:
             if name in self.layers:
                 data = self.layers[name]

@@ -2,6 +2,9 @@
 """
 OurWorld Arcade - Frogger (with proper levels)
 Multiple homes, level progression, increasing difficulty.
+
+Polished for visual feedback: death splash, home-fill glow,
+centered level banner, level-transition pause, and clear restart path.
 """
 
 import pygame
@@ -30,9 +33,22 @@ FROG_DARK = (40, 110, 40)
 FROG_EYE = (255, 255, 230)
 HOME_EMPTY = (40, 100, 40)
 HOME_FILLED = (255, 215, 80)
+HOME_GLOW = (255, 240, 160)
 TEXT = (250, 255, 250)
 ACCENT = (255, 215, 80)
 SAFE = (35, 95, 35)
+
+# Death feedback types
+DEATH_NONE = 0
+DEATH_CAR = 1
+DEATH_WATER = 2
+
+# Timing constants (ms)
+DEATH_FLASH_MS = 700
+HOME_GLOW_MS = 600
+HOME_PULSE_INTERVAL = 100
+LEVEL_TRANSITION_MS = 1800
+FROG_RESET_MS = 300
 
 
 @dataclass
@@ -76,14 +92,19 @@ class FroggerGame(MinigameBase):
         super().__init__(screen, clock)
         self.reset_game()
 
+    # ------------------------------------------------------------------
+    #  Public helpers
+    # ------------------------------------------------------------------
+
     def reset_game(self):
+        """Reset all game state to start of level 1."""
         self.frog_x = GRID_COLS // 2
         self.frog_y = GRID_ROWS - 2
         self.lives = 3
         self.score = 0
         self.level = 1
-        self.homes = [False] * 5          # 5 homes at top
-        self.home_positions = [4, 10, 16, 22, 28]  # x positions for homes
+        self.homes = [False] * 5
+        self.home_positions = [4, 10, 16, 22, 28]
         self.game_over = False
         self.won = False
         self.show_instructions = True
@@ -99,33 +120,40 @@ class FroggerGame(MinigameBase):
         self.last_move_time = 0
         self.move_cooldown = 190
 
+        # Feedback timing (ms remaining)
+        self.death_timer = 0
+        self.death_type = DEATH_NONE
+        self.home_glow_timers = [0] * 5
+        self.level_transition_timer = 0
+
+    # ------------------------------------------------------------------
+    #  Level / difficulty
+    # ------------------------------------------------------------------
+
     def _update_level_speeds(self):
-        """Increase difficulty with level."""
         multiplier = 1.0 + (self.level - 1) * 0.12
         self.lane_speeds = [s * multiplier for s in self.base_speeds]
 
     def _spawn_vehicles(self):
         self.cars.clear()
         self.logs.clear()
-
         for i, lane in enumerate(self.lanes):
             y = lane['y']
             speed = self.lane_speeds[i]
             direction = lane['dir']
             is_water = lane['is_water']
-
             count = 3 if is_water else 4
             spacing = GRID_COLS // count
-
             for j in range(count):
                 x = (j * spacing + random.randint(0, spacing - 2)) % GRID_COLS
                 if is_water:
-                    self.logs.append({'x': float(x), 'y': y, 'width': 5, 'speed': speed, 'dir': direction})
+                    self.logs.append({'x': float(x), 'y': y, 'width': 5,
+                                      'speed': speed, 'dir': direction})
                 else:
                     self.cars.append({
                         'x': float(x), 'y': y, 'width': 3,
                         'speed': speed, 'dir': direction,
-                        'color': random.choice(CAR_COLORS)
+                        'color': random.choice(CAR_COLORS),
                     })
 
     @property
@@ -139,10 +167,17 @@ class FroggerGame(MinigameBase):
             {'y': 6,  'dir': -1, 'is_water': True},
         ]
 
+    # ------------------------------------------------------------------
+    #  Input
+    # ------------------------------------------------------------------
+
     def handle_key(self, key):
-        if self.game_over or self.won:
-            if key == pygame.K_r: self.reset_game()
-            elif key in (pygame.K_q, pygame.K_ESCAPE): self.running = False
+        # Game-over screen — allow restart
+        if self.game_over:
+            if key == pygame.K_r:
+                self.reset_game()
+            elif key in (pygame.K_q, pygame.K_ESCAPE):
+                self.running = False
             return
 
         if self.show_instructions:
@@ -150,6 +185,10 @@ class FroggerGame(MinigameBase):
 
         if key in (pygame.K_ESCAPE, pygame.K_q):
             self.running = False
+            return
+
+        # Block movement during death-flash / home-glow / level-transition
+        if self.death_timer > 0 or self.level_transition_timer > 0:
             return
 
         now = pygame.time.get_ticks()
@@ -175,14 +214,21 @@ class FroggerGame(MinigameBase):
             if self.frog_y < 17:
                 self.score += 8
 
+    # ------------------------------------------------------------------
+    #  Update
+    # ------------------------------------------------------------------
+
     def update(self, dt):
-        if self.game_over or self.won or not self.running:
+        if self.game_over:
+            # Keep drawing the game-over screen; no gameplay updates.
+            self._tick_feedback(dt)
             return
 
         self.instruction_timer += dt * 1000
         if self.show_instructions and self.instruction_timer > 2800:
             self.show_instructions = False
 
+        # Vehicles
         for car in self.cars:
             car['x'] += car['speed'] * car['dir'] * 0.5
             if car['x'] < -car['width']:
@@ -198,17 +244,42 @@ class FroggerGame(MinigameBase):
                 log['x'] = -log['width']
 
         self._check_collisions()
+        self._tick_feedback(dt)
+
+    def _tick_feedback(self, dt):
+        """Decrement ms-based timers every frame."""
+        ms = dt * 1000
+        if self.death_timer > 0:
+            self.death_timer = max(0, self.death_timer - ms)
+        if self.level_transition_timer > 0:
+            self.level_transition_timer -= ms
+            if self.level_transition_timer <= 0:
+                # Start next level
+                self.level_transition_timer = 0
+                self.level += 1
+                self.homes = [False] * 5
+                self.home_glow_timers = [0] * 5
+                self._update_level_speeds()
+                self._spawn_vehicles()
+                self.frog_x = GRID_COLS // 2
+                self.frog_y = GRID_ROWS - 2
+        for i in range(5):
+            if self.home_glow_timers[i] > 0:
+                self.home_glow_timers[i] = max(0, self.home_glow_timers[i] - ms)
+
+    # ------------------------------------------------------------------
+    #  Collision / scoring
+    # ------------------------------------------------------------------
 
     def _check_collisions(self):
         # Cars
         for car in self.cars:
             if car['y'] == self.frog_y and car['x'] <= self.frog_x < car['x'] + car['width']:
-                self._lose_life()
+                self._lose_life(DEATH_CAR)
                 return
 
-        # Water - log carrying
+        # Water — log carrying
         lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
-
         if lane and lane.get('is_water', False):
             on_log = False
             for log in self.logs:
@@ -220,55 +291,53 @@ class FroggerGame(MinigameBase):
                         self.frog_x += log['speed'] * log['dir'] * 0.65
                         self.frog_x = max(0, min(GRID_COLS - 1, int(round(self.frog_x))))
                         break
-
             if not on_log:
-                self._lose_life()
+                self._lose_life(DEATH_WATER)
                 return
 
-        # Top row - home checking
-        if self.frog_y <= 2:
+        # Top row — home checking
+        if self.frog_y <= 2 and self.death_timer <= 0 and self.level_transition_timer <= 0:
             self._try_fill_home()
 
     def _try_fill_home(self):
         for i, home_x in enumerate(self.home_positions):
             if not self.homes[i] and abs(self.frog_x - home_x) <= 2:
-                # Fill home
                 self.homes[i] = True
+                self.home_glow_timers[i] = HOME_GLOW_MS
                 self.score += 100 + (self.level * 20)
 
-                # Check if level complete
                 if all(self.homes):
-                    self.level += 1
-                    self.homes = [False] * 5
-                    self._update_level_speeds()
-                    self._spawn_vehicles()  # Respawn with new speeds
-                    self.score += 300  # Level complete bonus
+                    self.level_transition_timer = LEVEL_TRANSITION_MS
+                else:
+                    self.death_timer = FROG_RESET_MS
 
-                # Reset frog
                 self.frog_x = GRID_COLS // 2
                 self.frog_y = GRID_ROWS - 2
                 return
 
         # Landed on top but not in a home
-        self._lose_life()
+        self._lose_life(DEATH_CAR)
 
-    def _lose_life(self):
+    def _lose_life(self, death_type=DEATH_CAR):
         self.lives -= 1
+        self.death_type = death_type
+        self.death_timer = DEATH_FLASH_MS
         if self.lives <= 0:
             self.game_over = True
-            self.running = False
-        else:
-            self.frog_x = GRID_COLS // 2
-            self.frog_y = GRID_ROWS - 2
+            # Keep running so the game-over screen is drawn
+
+    # ------------------------------------------------------------------
+    #  Drawing
+    # ------------------------------------------------------------------
 
     def draw(self, screen=None):
         target = screen or self.screen
         target.fill(BG)
+        now = pygame.time.get_ticks()
 
-        # Background lanes
+        # --- Background lanes ---
         for y in range(GRID_ROWS):
             cy = y * CELL_SIZE
-
             if y >= 17:
                 pygame.draw.rect(target, GRASS, (0, cy, SCREEN_WIDTH, CELL_SIZE))
             elif y in [18, 16, 14]:
@@ -278,68 +347,150 @@ class FroggerGame(MinigameBase):
                     pygame.draw.rect(target, ROAD_LINE, (gx, cy + CELL_SIZE - 8, 22, 2))
             elif y in [10, 8, 6]:
                 pygame.draw.rect(target, WATER, (0, cy, SCREEN_WIDTH, CELL_SIZE))
-                offset = (pygame.time.get_ticks() // 65) % 32
+                offset = (now // 65) % 32
                 for gx in range(-32, SCREEN_WIDTH, 32):
-                    pygame.draw.line(target, WATER_LINE, (gx + offset, cy + 5), (gx + 18 + offset, cy + 5), 2)
+                    pygame.draw.line(target, WATER_LINE,
+                                     (gx + offset, cy + 5),
+                                     (gx + 18 + offset, cy + 5), 2)
             elif y <= 2:
                 pygame.draw.rect(target, SAFE, (0, cy, SCREEN_WIDTH, CELL_SIZE))
 
-        # Homes
+        # --- Homes ---
         for i, home_x in enumerate(self.home_positions):
-            color = HOME_FILLED if self.homes[i] else HOME_EMPTY
             hx = home_x * CELL_SIZE
-            pygame.draw.ellipse(target, color, (hx, 2 * CELL_SIZE + 4, CELL_SIZE * 2, CELL_SIZE - 6))
+            if self.homes[i]:
+                # Pulsing glow during HOME_GLOW_MS
+                color = HOME_FILLED
+                if self.home_glow_timers[i] > 0:
+                    pulse = 0.5 + 0.5 * ((now // HOME_PULSE_INTERVAL) % 2)
+                    r = int(color[0] + (255 - color[0]) * pulse)
+                    g = int(color[1] + (255 - color[1]) * pulse)
+                    b = int(color[2] + (255 - color[2]) * pulse)
+                    color = (r, g, b)
+                pygame.draw.ellipse(target, color,
+                                    (hx, 2 * CELL_SIZE + 4,
+                                     CELL_SIZE * 2, CELL_SIZE - 6))
+                # Outer glow ring
+                pygame.draw.ellipse(target, HOME_GLOW,
+                                    (hx - 2, 2 * CELL_SIZE + 2,
+                                     CELL_SIZE * 2 + 4, CELL_SIZE - 2), 2)
+            else:
+                pygame.draw.ellipse(target, HOME_EMPTY,
+                                    (hx, 2 * CELL_SIZE + 4,
+                                     CELL_SIZE * 2, CELL_SIZE - 6))
 
-        # Cars
+        # --- Cars ---
         for car in self.cars:
             x = int(car['x'] * CELL_SIZE)
             y = car['y'] * CELL_SIZE + 2
             w = car['width'] * CELL_SIZE - 4
-            pygame.draw.rect(target, car['color'], (x, y, w, CELL_SIZE - 6), border_radius=4)
-            pygame.draw.rect(target, CAR_CABIN, (x + 5, y + 4, w - 10, CELL_SIZE - 14), border_radius=2)
-            pygame.draw.ellipse(target, (20, 20, 20), (x + 2, y + CELL_SIZE - 6, 6, 5))
-            pygame.draw.ellipse(target, (20, 20, 20), (x + w - 8, y + CELL_SIZE - 6, 6, 5))
+            pygame.draw.rect(target, car['color'], (x, y, w, CELL_SIZE - 6),
+                             border_radius=4)
+            pygame.draw.rect(target, CAR_CABIN,
+                             (x + 5, y + 4, w - 10, CELL_SIZE - 14),
+                             border_radius=2)
+            pygame.draw.ellipse(target, (20, 20, 20),
+                                (x + 2, y + CELL_SIZE - 6, 6, 5))
+            pygame.draw.ellipse(target, (20, 20, 20),
+                                (x + w - 8, y + CELL_SIZE - 6, 6, 5))
 
-        # Logs
+        # --- Logs ---
         for log in self.logs:
             x = int(log['x'] * CELL_SIZE)
             y = log['y'] * CELL_SIZE + 3
             w = log['width'] * CELL_SIZE - 6
-            pygame.draw.rect(target, LOG, (x, y, w, CELL_SIZE - 8), border_radius=5)
+            pygame.draw.rect(target, LOG, (x, y, w, CELL_SIZE - 8),
+                             border_radius=5)
             for sx in range(5, w - 5, 12):
-                pygame.draw.line(target, LOG_DETAIL, (x + sx, y + 2), (x + sx, y + CELL_SIZE - 10), 2)
+                pygame.draw.line(target, LOG_DETAIL,
+                                 (x + sx, y + 2),
+                                 (x + sx, y + CELL_SIZE - 10), 2)
 
-        # Frog
+        # --- Frog ---
         fx = self.frog_x * CELL_SIZE + 1
         fy = self.frog_y * CELL_SIZE + 1
-        pygame.draw.ellipse(target, FROG, (fx + 2, fy + 5, CELL_SIZE - 4, CELL_SIZE - 9))
-        pygame.draw.ellipse(target, FROG, (fx + 5, fy, CELL_SIZE - 10, CELL_SIZE - 5))
-        pygame.draw.ellipse(target, FROG_DARK, (fx + 5, fy, CELL_SIZE - 10, CELL_SIZE - 5), 2)
-        pygame.draw.circle(target, FROG_EYE, (fx + 9, fy + 4), 3)
-        pygame.draw.circle(target, FROG_EYE, (fx + 14, fy + 4), 3)
-        pygame.draw.circle(target, (20, 20, 20), (fx + 10, fy + 4), 1)
-        pygame.draw.circle(target, (20, 20, 20), (fx + 15, fy + 4), 1)
+        if self.death_timer > 0 and (now // 60) % 2 == 0:
+            # Flash white during death flash
+            pygame.draw.ellipse(target, (255, 255, 255),
+                                (fx, fy, CELL_SIZE, CELL_SIZE))
+        else:
+            pygame.draw.ellipse(target, FROG,
+                                (fx + 2, fy + 5, CELL_SIZE - 4, CELL_SIZE - 9))
+            pygame.draw.ellipse(target, FROG,
+                                (fx + 5, fy, CELL_SIZE - 10, CELL_SIZE - 5))
+            pygame.draw.ellipse(target, FROG_DARK,
+                                (fx + 5, fy, CELL_SIZE - 10, CELL_SIZE - 5), 2)
+            pygame.draw.circle(target, FROG_EYE, (fx + 9, fy + 4), 3)
+            pygame.draw.circle(target, FROG_EYE, (fx + 14, fy + 4), 3)
+            pygame.draw.circle(target, (20, 20, 20), (fx + 10, fy + 4), 1)
+            pygame.draw.circle(target, (20, 20, 20), (fx + 15, fy + 4), 1)
 
-        # UI
-        target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT), (12, 8))
-        target.blit(self.small_font.render(f"LEVEL: {self.level}   LIVES: {self.lives}", True, TEXT), (12, 36))
-        target.blit(self.small_font.render("OURWORLD ARCADE • FROGGER", True, ACCENT), (SCREEN_WIDTH - 250, 10))
+        # --- Death splash overlay ---
+        if self.death_timer > 0:
+            splash = ((255, 100, 100) if self.death_type == DEATH_CAR
+                      else (80, 140, 255))
+            cx = fx + CELL_SIZE // 2
+            cy = fy + CELL_SIZE // 2
+            for ring in range(1, 4):
+                alpha = max(0, int(128 * (1 - ring / 4)))
+                r = int(splash[0] * alpha / 255)
+                g = int(splash[1] * alpha / 255)
+                b = int(splash[2] * alpha / 255)
+                pygame.draw.circle(target, (r, g, b), (cx, cy),
+                                   ring * 8 + 4, 2)
+
+        # --- UI ---
+        # Large centered level indicator
+        level_text = self.big_font.render(f"LEVEL {self.level}", True, ACCENT)
+        target.blit(level_text,
+                     (SCREEN_WIDTH // 2 - level_text.get_width() // 2, 8))
+        target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT),
+                     (12, 8 + level_text.get_height() + 4))
+        target.blit(self.small_font.render(f"LIVES: {'♥' * self.lives}", True, TEXT),
+                     (12, 36))
+        target.blit(self.small_font.render("OURWORLD ARCADE • FROGGER", True, ACCENT),
+                     (SCREEN_WIDTH - 250, 10))
 
         # Home progress
         filled = sum(self.homes)
-        target.blit(self.small_font.render(f"HOMES: {filled}/5", True, TEXT), (SCREEN_WIDTH - 120, 36))
+        target.blit(self.small_font.render(f"HOMES: {filled}/5", True, TEXT),
+                     (SCREEN_WIDTH - 120, 36))
 
         if self.show_instructions:
-            inst = self.small_font.render("Arrows/WASD: Move   |   Fill all homes to advance level!", True, (200, 230, 200))
-            target.blit(inst, (SCREEN_WIDTH//2 - inst.get_width()//2, 65))
+            inst = self.small_font.render(
+                "Arrows/WASD: Move   |   Fill all homes to advance level!",
+                True, (200, 230, 200))
+            target.blit(inst,
+                        (SCREEN_WIDTH // 2 - inst.get_width() // 2, 65))
 
+        # Level-transition banner
+        if self.level_transition_timer > 0:
+            alpha = min(255, int(255 * min(1, self.level_transition_timer / 400)))
+            banner = pygame.Surface((400, 80), pygame.SRCALPHA)
+            banner.fill((10, 20, 10, alpha // 2))
+            target.blit(banner,
+                        (SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT // 2 - 40))
+            msg = self.big_font.render(
+                f"LEVEL {self.level - 1} COMPLETE!", True, (255, 240, 180))
+            target.blit(msg,
+                        (SCREEN_WIDTH // 2 - msg.get_width() // 2,
+                         SCREEN_HEIGHT // 2 - 20))
+
+        # Game-over screen
         if self.game_over:
-            msg = self.big_font.render("GAME OVER  •  R = Restart   ESC = Quit", True, (255, 160, 160))
-            target.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, 165))
+            msg = self.big_font.render("GAME OVER", True, (255, 120, 120))
+            target.blit(msg,
+                        (SCREEN_WIDTH // 2 - msg.get_width() // 2, 160))
+            sub = self.font.render("R = Try Again    ESC = Quit",
+                                   True, (220, 200, 200))
+            target.blit(sub,
+                        (SCREEN_WIDTH // 2 - sub.get_width() // 2,
+                         160 + msg.get_height() + 8))
 
         if self.won:
             msg = self.big_font.render("YOU CROSSED! GREAT JOB!", True, (110, 255, 150))
-            target.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, 165))
+            target.blit(msg,
+                        (SCREEN_WIDTH // 2 - msg.get_width() // 2, 165))
 
 
 if __name__ == "__main__":

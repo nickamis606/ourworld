@@ -69,7 +69,13 @@ class PetSprite(pygame.sprite.Sprite):
         self.current_action = None
 
     def _load_sprite(self) -> Optional[pygame.Surface]:
-        """Try to load a sprite from assets/pets/. Returns None if not found."""
+        """Try to load a sprite from assets/pets/ and auto-center the content.
+
+        Assets may have the pet offset from the center (e.g. 832×1248 PNGs).
+        We compute the bounding box of non-transparent pixels, center that
+        within a new surface, then scale to TARGET_HEIGHT so the drawn pet
+        appears correctly centred at rect.center.
+        """
         sprite_name = self.PET_SPRITE_NAMES.get(self.pet_id)
         if not sprite_name:
             return None
@@ -86,6 +92,9 @@ class PetSprite(pygame.sprite.Sprite):
                 try:
                     img = pygame.image.load(str(path)).convert_alpha()
 
+                    # Auto-center content within the loaded image
+                    img = self._center_content(img)
+
                     # Normalize to consistent target height
                     if img.get_height() != self.TARGET_HEIGHT:
                         ratio = self.TARGET_HEIGHT / img.get_height()
@@ -100,6 +109,44 @@ class PetSprite(pygame.sprite.Sprite):
 
         print(f"[PetSprite] WARNING: No sprite found for '{sprite_name}' (pet_id={self.pet_id})")
         return None
+
+    def _center_content(self, img: pygame.Surface) -> pygame.Surface:
+        """Reposition visible (non-transparent) content so its centre aligns with the image centre.
+
+        Returns a new surface of the same dimensions as the original.
+        """
+        data = img.tobytes()
+        w, h = img.get_size()
+
+        # Find bounding box of non-transparent pixels
+        min_x, max_x, min_y, max_y = w, 0, h, 0
+        for y in range(h):
+            row_offset = y * w * 4
+            for x in range(w):
+                a = data[row_offset + x * 4 + 3]
+                if a > 0:
+                    if x < min_x: min_x = x
+                    if x > max_x: max_x = x
+                    if y < min_y: min_y = y
+                    if y > max_y: max_y = y
+
+        # No visible content — return as-is
+        if max_x < min_x or max_y < min_y:
+            return img
+
+        content_w = max_x - min_x + 1
+        content_h = max_y - min_y + 1
+        # Create output surface same size, filled transparent
+        surface = pygame.Surface((w, h), pygame.SRCALPHA)
+
+        # Center the content box within the original frame
+        dst_x = (w - content_w) // 2
+        dst_y = (h - content_h) // 2
+
+        src_rect = pygame.Rect(min_x, min_y, content_w, content_h)
+        dst_rect = pygame.Rect(dst_x, dst_y, content_w, content_h)
+        surface.blit(img, dst_rect, src_rect)
+        return surface
 
     def set_position(self, x: int, y: int):
         self.rect.center = (x, y)

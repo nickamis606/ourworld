@@ -30,39 +30,45 @@ class LocationBackground:
 
         base_path = os.path.join(self.assets_path, location, "base.png")
 
+        layers_dir = os.path.join(self.assets_path, location, "layers")
+        has_base = False
         if os.path.exists(base_path):
             try:
                 img = pygame.image.load(base_path).convert_alpha()
                 self.base_surface = pygame.transform.smoothscale(img, (self.width, self.height))
                 self.use_asset = True
+                has_base = True
             except Exception:
-                return
+                pass
 
-            layers_dir = os.path.join(self.assets_path, location, "layers")
-            if os.path.isdir(layers_dir):
-                for filename in os.listdir(layers_dir):
-                    if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                        name = os.path.splitext(filename)[0]
+        has_layers = os.path.isdir(layers_dir)
+        if has_layers:
+            for filename in os.listdir(layers_dir):
+                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    name = os.path.splitext(filename)[0]
 
-                        # These are handled conditionally elsewhere
-                        if name in ("decorations", "pot"):
-                            continue
+                    if name in ("decorations", "pot"):
+                        continue
 
-                        layer_path = os.path.join(layers_dir, filename)
-                        try:
-                            layer_img = pygame.image.load(layer_path).convert_alpha()
+                    layer_path = os.path.join(layers_dir, filename)
+                    try:
+                        layer_img = pygame.image.load(layer_path).convert_alpha()
 
-                            if layer_img.get_height() > self.max_layer_height:
-                                scale = self.max_layer_height / layer_img.get_height()
-                                new_width = int(layer_img.get_width() * scale)
-                                layer_img = pygame.transform.smoothscale(layer_img, (new_width, self.max_layer_height))
+                        # Scale to fit within the screen while preserving aspect ratio
+                        layer_w, layer_h = layer_img.get_size()
+                        scale_w = self.width / layer_w
+                        scale_h = self.height / layer_h
+                        scale = min(scale_w, scale_h, 1.0)  # never upscale
+                        new_w = int(layer_w * scale)
+                        new_h = int(layer_h * scale)
+                        layer_img = pygame.transform.smoothscale(layer_img, (new_w, new_h))
 
-                            self.layers[name] = {
-                                "surface": layer_img,
-                                "pos": self._get_home_position(name)
-                            }
-                        except Exception:
-                            pass
+                        self.layers[name] = {
+                            "surface": layer_img,
+                            "pos": self._get_home_position(name)
+                        }
+                    except Exception:
+                        pass
 
     def _get_home_position(self, name: str) -> Tuple[int, int]:
         positions = {
@@ -74,16 +80,24 @@ class LocationBackground:
         return positions.get(name, (100, 200))
 
     def draw(self, surface: pygame.Surface):
-        if not self.use_asset or not self.base_surface:
-            return
-
-        surface.blit(self.base_surface, (0, 0))
+        if self.base_surface:
+            surface.blit(self.base_surface, (0, 0))
+        elif self.use_asset:
+            # Procedural fallback when no base image exists
+            self._draw_procedural(surface)
 
         order = ["rug", "table", "shelf", "window"]
         for name in order:
             if name in self.layers:
                 data = self.layers[name]
                 surface.blit(data["surface"], data["pos"])
+
+    def _draw_procedural(self, surface: pygame.Surface):
+        """Fill with a solid colour as procedural background fallback."""
+        if self.location == "home":
+            surface.fill((220, 200, 180))
+        else:
+            surface.fill((200, 220, 200))
 
     def has_asset(self) -> bool:
         return self.use_asset

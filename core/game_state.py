@@ -2,6 +2,8 @@ import json
 import os
 import time
 from .pet_state import PetState
+from .savegame import SaveManager
+
 
 class GameState:
     SAVE_PATH = os.path.join(os.path.dirname(__file__), "..", "saves", "savegame.json")
@@ -37,7 +39,13 @@ class GameState:
 
     def __init__(self):
         self.pet = PetState()
-        self.load()
+        self.save_manager = SaveManager(self)
+        self._has_save = self.load()
+
+    @property
+    def has_save(self) -> bool:
+        """True when a valid previous save exists."""
+        return self._has_save
 
     def tick(self):
         self.pet.tick()
@@ -54,9 +62,13 @@ class GameState:
             if time_since > 60 * (plant.get("stage", 0) + 1):
                 plant["stage"] = plant.get("stage", 0) + 1
 
-    def change_location(self, new_location: str):
+    def change_location(self, new_location: str) -> bool:
+        """Change pet location. Returns True if the location changed."""
         if new_location in self.LOCATIONS:
             self.pet.location = new_location
+            self.trigger_auto_save()
+            return True
+        return False
 
     def get_current_location_info(self):
         return self.LOCATIONS.get(self.pet.location, self.LOCATIONS["home"])
@@ -79,7 +91,11 @@ class GameState:
             bonus_applied = "Resting at Home"
             extra = 10
 
-        return {"success": True, "bonus": bonus_applied, "extra": extra}
+        result = {"success": True, "bonus": bonus_applied, "extra": extra}
+        # Auto-save on successful care action.
+        if result["success"]:
+            self.trigger_auto_save()
+        return result
 
     def earn_coins(self, amount: int):
         self.pet.coins = min(99999, self.pet.coins + amount)
@@ -170,6 +186,8 @@ class GameState:
             self.pet.inventory.pop("flowers", None)
 
         self.pet.home_decorated = True
+        self.pet.home_decoration_time = time.monotonic()
+        self.trigger_auto_save()
         return {"success": True, "msg": "Home decorated with flowers!"}
 
     def _decay_home_decoration(self):
@@ -184,40 +202,24 @@ class GameState:
             self.pet.home_decoration_time = 0.0
 
     def save(self):
-        os.makedirs(os.path.dirname(self.SAVE_PATH), exist_ok=True)
-        try:
-            with open(self.SAVE_PATH, "w") as f:
-                json.dump(self.pet.to_dict(), f, indent=2)
-        except Exception as e:
-            print("Save failed:", e)
+        """Delegate to SaveManager. Returns True if a save was written."""
+        return self.save_manager.save()
 
-    def decorate_home(self) -> dict:
-        if self.pet.location != "home":
-            return {"success": False, "msg": "You can only decorate at home"}
+    def trigger_auto_save(self) -> bool:
+        """Convenience: trigger an auto-save if cooldown allows.
+        Returns True if a save was actually written, False if throttled."""
+        return self.save_manager.trigger_auto_save()
 
-        if self.pet.inventory.get("flowers", 0) < 5:
-            return {"success": False, "msg": "You need at least 5 flowers to decorate"}
-
-        self.pet.inventory["flowers"] -= 5
-        if self.pet.inventory["flowers"] <= 0:
-            self.pet.inventory.pop("flowers", None)
-
-        self.pet.home_decorated = True
-        self.pet.home_decoration_time = time.monotonic()
-
-        return {"success": True, "msg": "Home decorated with flowers!"}
-
-    def load(self):
-        if os.path.exists(self.SAVE_PATH):
-            try:
-                with open(self.SAVE_PATH) as f:
-                    data = json.load(f)
-                self.pet = PetState.from_dict(data)
-                self.pet.last_tick = time.monotonic()
-            except Exception as e:
-                print("Load failed, starting fresh:", e)
+    def load(self) -> bool:
+        """Load from SaveManager. Returns True if a valid save was found."""
+        return self.save_manager.load()
 
     def reset(self):
+        """Reset all game state and delete save file."""
         self.pet = PetState()
-        if os.path.exists(self.SAVE_PATH):
-            os.remove(self.SAVE_PATH)
+        self.save_manager.high_scores.clear()
+        self._has_save = False
+        save_dir = os.path.dirname(self.SAVE_PATH)
+        save_path = self.SAVE_PATH
+        if os.path.exists(save_path):
+            os.remove(save_path)

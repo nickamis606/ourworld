@@ -85,6 +85,8 @@ class ArcadeScene(BaseScene):
             self.status = "Frogger! Arrows/WASD to move • Reach the top!"
 
     def _return_to_main(self):
+        # Auto-save when leaving the arcade.
+        self.game_state.trigger_auto_save()
         self.next_scene = "main"
         if self.minigame:
             self._handle_minigame_end()
@@ -109,6 +111,11 @@ class ArcadeScene(BaseScene):
             return
 
         score = getattr(self.minigame, 'score', 0)
+
+        # Record high score and auto-save.
+        if self.minigame_type:
+            self.game_state.save_manager.update_high_score(self.minigame_type, score)
+            self.game_state.trigger_auto_save()
 
         if self.minigame_type == "snake":
             bonus = min(40, score // 3)

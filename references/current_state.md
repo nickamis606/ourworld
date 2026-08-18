@@ -35,7 +35,11 @@ Throwaway project — procedural fallback for pet sprites not existing.
 - Score popup animation when filling a home (+100 + level×20).
 - "Press any key to start" overlay for level transitions instead of auto-advance (gives player a moment to prepare).
 
-### Frogger visual + feel polish (2026-08-18)
+**Save/Load System (2026-08-18):**
+
+Step 5–7 completed: auto-save triggers wired across all action paths, high-score sync in `_handle_minigame_end`, and a "💾 Saved" flash indicator in the bottom-right corner of the screen (fades over 1.5s).
+
+**Frogger visual + feel polish (2026-08-18)**
 
 **Death → respawn flow (4 changes):**
 1. **White screen flash (120 ms)** — `_lose_life()` now sets `self.flash_timer = 120`. During draw, a white alpha surface is blitted over the entire screen, fading out linearly over 120 ms. Gives a sharp "hit" moment.

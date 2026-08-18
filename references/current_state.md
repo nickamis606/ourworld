@@ -20,6 +20,15 @@ Throwaway project — procedural fallback for pet sprites not existing.
 5. **Restart path** — Game-over no longer exits the minigame loop (`running` stays `True`). The game-over screen shows "GAME OVER" with "R = Try Again / ESC = Quit". Input is blocked during death-flash and level-transition to prevent accidental moves.
 6. **Bug fix** — The original code incremented `self.level` inside `_try_fill_home` before the transition timer, then incremented it again when the timer fired. Now `self.level` is only incremented inside the timer handler, matching the displayed level number.
 
+**Frogger bug fix (2026-08-18):**
+- **Issue:** Losing a life (or completing a level) could return the player to the Arcade instead of continuing the run. The `_try_fill_home()` method sets `self.won = True` when all 5 homes are filled. This flag is never cleared during the level transition. `ArcadeScene.update()` checks `getattr(self.minigame, 'won', False)` and calls `_handle_minigame_end()`, which clears the minigame and returns to the Arcade — even though the player still had lives and the level transition timer was still active.
+- **Fix:** Clear `self.won = False` in `_tick_feedback()` when the level transition timer fires (same place where `self.level` is incremented and the level is reset). This ensures `won` only reflects the *current* game's state, not a lingering flag from the previous completed game.
+- **Death flow after fix:**
+  1. Collision → `_lose_life()` decrements lives, sets `death_timer = 700ms`, splash + flash drawn
+  2. If lives > 0: after 700ms timer expires, gameplay resumes, frog respawns at bottom
+  3. If lives == 0: `game_over = True`, game continues drawing the Game Over screen
+  4. In ArcadeScene: 1800ms delay after game_over lets player see the screen and press 'R' to retry or ESC to quit
+
 **Open Frogger polish:**
 - Sound effects for death, home fill, and level complete (would require an assets directory for Frogger).
 - Home-fill could show a small frog-silhouette icon in the filled home slot (currently just the glowing ellipse).

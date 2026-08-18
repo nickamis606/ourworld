@@ -263,6 +263,8 @@ class FroggerGame(MinigameBase):
                 self._spawn_vehicles()
                 self.frog_x = GRID_COLS // 2
                 self.frog_y = GRID_ROWS - 2
+                # Clear won flag — it belongs to the completed game, not the new one
+                self.won = False
         for i in range(5):
             if self.home_glow_timers[i] > 0:
                 self.home_glow_timers[i] = max(0, self.home_glow_timers[i] - ms)
@@ -273,10 +275,11 @@ class FroggerGame(MinigameBase):
 
     def _check_collisions(self):
         # Cars
-        for car in self.cars:
-            if car['y'] == self.frog_y and car['x'] <= self.frog_x < car['x'] + car['width']:
-                self._lose_life(DEATH_CAR)
-                return
+        if self.death_timer <= 0:
+            for car in self.cars:
+                if car['y'] == self.frog_y and car['x'] <= self.frog_x < car['x'] + car['width']:
+                    self._lose_life(DEATH_CAR)
+                    return
 
         # Water — log carrying
         lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
@@ -291,7 +294,7 @@ class FroggerGame(MinigameBase):
                         self.frog_x += log['speed'] * log['dir'] * 0.65
                         self.frog_x = max(0, min(GRID_COLS - 1, int(round(self.frog_x))))
                         break
-            if not on_log:
+            if not on_log and self.death_timer <= 0:
                 self._lose_life(DEATH_WATER)
                 return
 

@@ -28,11 +28,18 @@ class ArcadeScene(BaseScene):
         self.status = "Choose a game!"
 
         self.next_scene = None
+        self._minigame_delay = 0  # keep minigame alive briefly after game_over
 
     def handle_event(self, event: pygame.event.Event):
         if self.minigame:
+            # During the game-over delay, let the minigame handle its own keys
+            # (e.g. 'R' to restart in Frogger). After the delay, pass through.
             if event.type == pygame.KEYDOWN and hasattr(self.minigame, 'handle_key'):
-                self.minigame.handle_key(event.key)
+                if self._minigame_delay <= 0:
+                    self.minigame.handle_key(event.key)
+                elif self.minigame.game_over:
+                    self.minigame.handle_key(event.key)
+                return
             return
 
         if event.type == pygame.KEYDOWN:
@@ -86,8 +93,16 @@ class ArcadeScene(BaseScene):
         if self.minigame:
             self.minigame.update(dt)
 
-            if getattr(self.minigame, 'game_over', False) or getattr(self.minigame, 'won', False):
-                self._handle_minigame_end()
+            if (getattr(self.minigame, 'game_over', False) or getattr(self.minigame, 'won', False)):
+                if self._minigame_delay <= 0:
+                    # Brief delay so the player can see game_over / press 'R'
+                    self._minigame_delay = 1800
+                else:
+                    self._minigame_delay -= dt * 1000
+                    if self._minigame_delay <= 0:
+                        if getattr(self.minigame, 'game_over', False):
+                            self._handle_minigame_end()
+                        self._minigame_delay = 0
 
     def _handle_minigame_end(self):
         if not self.minigame:

@@ -44,11 +44,18 @@ class ActionButtons:
             },
         }
 
-    def draw(self, surface, anim_state_active: bool = False):
+    def draw(self, surface, anim_state_active: bool = False,
+             pulse_action: str = None, pulse_alpha: float = 0.0):
         for name, btn in self.buttons.items():
             rect = btn["rect"]
             color = btn["color"]
             label = btn["label"]
+
+            # Pulse highlight: brief bright flash on the just-pressed button
+            if pulse_action == name and pulse_alpha > 0:
+                pulse_color = tuple(min(255, int(c * (1.0 + pulse_alpha * 0.6)))
+                                    for c in color)
+                draw_rounded_rect(surface, rect, pulse_color, radius=8)
 
             draw_rounded_rect(surface, rect, color, radius=8)
 

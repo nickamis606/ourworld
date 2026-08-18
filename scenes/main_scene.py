@@ -160,9 +160,9 @@ class MainScene(BaseScene):
             self._load_location_background(loc)
 
             if loc == "home":
-                self.pet_sprite.pos = (340, 300)
+                self.pet_sprite.rect.center = (340, 300)
             else:
-                self.pet_sprite.pos = (340, 210)
+                self.pet_sprite.rect.center = (340, 210)
 
         self.map_mode = False
 
@@ -221,7 +221,10 @@ class MainScene(BaseScene):
         self.pet_sprite.draw(surface)
         self._draw_mood(surface)
         self._draw_status(surface)
-        self.action_buttons.draw(surface, anim_state_active=self.animator.is_active)
+        # Get pulse state for button highlight
+        pulse_name, pulse_alpha = self.animator.get_pulse()
+        self.action_buttons.draw(surface, anim_state_active=self.animator.is_active,
+                                 pulse_action=pulse_name, pulse_alpha=pulse_alpha)
 
         self.shop_ui.draw(surface, loc)
 
@@ -232,7 +235,7 @@ class MainScene(BaseScene):
             self.arcade_panel.draw(surface)
 
         if self.animator.is_active:
-            px, py = self.pet_sprite.pos
+            px, py = self.pet_sprite.rect.center
             self.animator.draw(surface, int(px), int(py))
 
         hint = self.tiny_font.render("F/P/C/R • M=Map • Q=Quit", True, (100, 100, 100))
@@ -386,9 +389,9 @@ class MainScene(BaseScene):
             self._load_location_background(loc)
 
             if loc == "home":
-                self.pet_sprite.pos = (340, 300)
+                self.pet_sprite.rect.center = (340, 300)
             else:
-                self.pet_sprite.pos = (340, 210)
+                self.pet_sprite.rect.center = (340, 210)
 
         self.map_mode = False
 

@@ -1,23 +1,34 @@
-# Active Task — Save/Load System for Full Game State
+# Active Task — Care Action Animation Polish
 
-**Goal:** Implement robust JSON-based save/load for complete game state (PetState + needs + location + high scores) with auto-save on important events.
+**Goal:** Improve the visual feedback and timing of the four care action animations (Feed, Play, Clean, Rest) to make them feel more satisfying and clear on a 640×480 handheld screen.
+
+## Current State Analysis
+
+The four animations live in `core/action_animator.py` with a shared 1.3s duration:
+- **Feed**: Brown bowl → rising food particles → heart pops up (only appears at 60%+ progress)
+- **Play**: Orange ball bounces with motion lines → impact dust
+- **Clean**: Blue circles rise with sine-wave drift
+- **Rest**: Four "Z" characters float up with staggered offsets
+
+Problems identified:
+1. All animations share the same 1.3s duration — no personality differentiation
+2. No action-specific easing — everything uses linear progress
+3. Animations are drawn centered at pet rect center — not always optimal positioning
+4. Feed: heart appears late (60%) and doesn't linger — too brief
+5. Play: no squash/stretch on the ball impact, motion lines are static
+6. Clean: no sparkle effect, just floating circles — not "clean" enough
+7. Rest: Z characters are drawn with SysFont every frame (expensive!) and have no size fade
+8. No screen-scale feedback (like a subtle screen flash or button pulse)
+9. No "done" tail — animations just stop at progress=1.0
 
 ## Steps
-- [x] DONE: 1. Fix circular import between `core/game_state.py` and `core/savegame.py` — use TYPE_CHECKING guard + string forward reference
-- [x] DONE: 2. Add `to_dict()`/`from_dict()` round-trip verification for PetState + Needs — verified JSON serializable
-- [x] DONE: 3. Extend `SaveManager.load()` to restore `location` and high scores from file — done; also added legacy format (v0) migration
-- [x] DONE: 4. Implement `SaveManager.save()` with atomic write — already done, verified temp+rename works
-- [x] DONE: 5. Wire auto-save triggers: on action performed, location changed, minigame end, window close
-- [x] DONE: 6. Wire auto-save into `arcade_scene.py` (`_handle_minigame_end`) — update high scores, trigger save
-- [x] DONE: 7. Add save indicator to UI (subtle "💾 Saved" flash that fades)
-- [x] DONE: 8. Test: unit tests for PetState round-trip, SaveManager save/load, v0 migration, high scores, auto-save cooldown, save indicator timing, corrupt/missing file handling — all 9 tests pass
-- [x] DONE: Update `references/current_state.md` and commit
 
-## Notes / Blockers
-- Auto-save triggers to wire:
-  - `GameState.perform_care_action()` → call `trigger_auto_save()` after successful action
-  - `GameState.change_location()` → call `trigger_auto_save()` after location change
-  - `ArcadeScene._handle_minigame_end()` → update high scores via `SaveManager.update_high_score()`, then trigger auto-save
-  - `OurWorldPygame.run()` → already has `self.game_state.save()` on quit
-- `SAVE_COOLDOWN = 3.0s` prevents spam
-- High scores synced to disk on every save() call
+- [ ] 1. Give each action its own duration and easing curve
+- [ ] 2. Fix Rest animation: cache "Z" font surfaces, add size fade
+- [ ] 3. Improve Feed: extend heart visibility, add heartbeat bounce
+- [ ] 4. Improve Play: add squash/stretch on ball, add motion trail
+- [ ] 5. Improve Clean: add sparkle/glow on bubbles, make them pop
+- [x] 6. Add subtle button pulse feedback when action started
+- [ ] 7. Add a brief "done" tail to each animation (linger 0.15s at peak)
+- [ ] 8. Test via xvfb-run and verify no regressions
+- [ ] 9. Update current_state.md and commit

@@ -162,6 +162,17 @@ class OurWorldPygame:
                 self.arcade_scene = None  # clean up arcade instance
 
             self.current_scene.draw(self.screen)
+
+            # Draw save indicator flash.
+            indicator = self.game_state.save_manager.get_save_indicator(self.screen)
+            if indicator:
+                alpha, x, y = indicator
+                text = self.main_scene.small_font.render("💾 Saved", True, (255, 255, 255))
+                surf = pygame.Surface((text.get_width() + 8, text.get_height() + 4), pygame.SRCALPHA)
+                pygame.draw.rect(surf, (40, 40, 40, alpha), surf.get_rect(), border_radius=4)
+                surf.blit(text, (4, 2))
+                self.screen.blit(surf, (x - surf.get_width(), y - surf.get_height()))
+
             pygame.display.flip()
 
         self.game_state.save()

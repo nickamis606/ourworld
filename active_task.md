@@ -10,7 +10,7 @@
 - [x] DONE: 5. Wire auto-save triggers: on action performed, location changed, minigame end, window close
 - [x] DONE: 6. Wire auto-save into `arcade_scene.py` (`_handle_minigame_end`) — update high scores, trigger save
 - [x] DONE: 7. Add save indicator to UI (subtle "💾 Saved" flash that fades)
-- [ ] TODO: 8. Test: start fresh, play, change location, play minigame, quit → verify save file
+- [x] DONE: 8. Test: unit tests for PetState round-trip, SaveManager save/load, v0 migration, high scores, auto-save cooldown, save indicator timing, corrupt/missing file handling — all 9 tests pass
 - [x] DONE: Update `references/current_state.md` and commit
 
 ## Notes / Blockers

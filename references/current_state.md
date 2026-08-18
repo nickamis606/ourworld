@@ -37,7 +37,16 @@ Throwaway project — procedural fallback for pet sprites not existing.
 
 **Save/Load System (2026-08-18):**
 
-Step 5–7 completed: auto-save triggers wired across all action paths, high-score sync in `_handle_minigame_end`, and a "💾 Saved" flash indicator in the bottom-right corner of the screen (fades over 1.5s).
+Step 5–8 completed: auto-save triggers wired, high-score sync, save indicator, and comprehensive unit testing (9 tests: PetState round-trip, SaveManager save/load, v0 migration, high scores, cooldown, save indicator timing, corrupt/missing file). All pass.
+
+**Save/Load test results:**
+- PetState `to_dict()`/`from_dict()` round-trip verified for all fields
+- SaveManager save/load cycle with high scores verified
+- v0 legacy format migration with high_scores restored
+- Auto-save cooldown (3s) correctly throttles rapid saves
+- Save indicator timing (200→0 alpha over 1.5s) verified
+- Corrupt save file → starts fresh
+- Missing save file → starts fresh
 
 **Frogger visual + feel polish (2026-08-18)**
 

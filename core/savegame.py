@@ -92,6 +92,11 @@ class SaveManager:
                     home_decoration_time=legacy.get("home_decoration_time", 0.0),
                 )
                 self._last_save_time = time.monotonic()
+
+                # Also try to restore high scores from legacy format (optional).
+                self.high_scores = {
+                    k: int(v) for k, v in data.get("high_scores", {}).items()
+                }
                 return True
 
             # Schema v1+: nested "pet" object.

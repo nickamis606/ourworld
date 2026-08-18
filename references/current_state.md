@@ -5,6 +5,24 @@ Throwaway project — procedural fallback for pet sprites not existing.
 
 ## Latest Changes
 
+2026-08-18:
+- **Care action animation polish** (`core/action_animator.py`, `ui/action_buttons.py`) — see details below.
+
+### Care Action Animation Polish (2026-08-18)
+
+1. **Per-action durations** — Feed 1.3s, Play 1.1s, Clean 1.4s, Rest 1.6s, Plant 1.5s. Each has personality-appropriate timing.
+2. **Cubic ease-out** — All animations use `1 - (1-p)³` for natural fast-start/slow-landing motion.
+3. **Fade-out tail** — 200ms graceful fade after linger phase instead of abrupt stop.
+4. **Linger phase** — Each action holds at peak (0.12–0.2s) so the viewer registers the completed animation.
+5. **Button pulse** — Brief bright flash (300ms triangular envelope) on the just-pressed button, via `Animator.get_pulse()` → `ActionButtons.draw()`.
+6. **Feed improvements** — Heart now appears at 20% (not 60%), with heartbeat bounce pulse and glow effect. Bowl has pop-in scale.
+7. **Play improvements** — Dynamic squash/stretch proportional to velocity, motion lines scale with ball height, expanding impact ring on ground.
+8. **Clean improvements** — 8 bubbles (up from 6) with sparkle highlights, grow-then-pop lifecycle, brighter rim.
+9. **Rest improvements** — Font surface cache (no per-frame SysFont), size fade (grow→full→shrink), sine wobble, color fade.
+10. **Pet position fix** — Switched from `pet_sprite.pos` to `pet_sprite.rect.center` in MainScene for consistency.
+
+## Latest Changes
+
 2026-08-17:
 - **Frogger visual + feedback + level-flow polish** (`minigames/frogger.py`) — see details below.
 - Bugfix in sprites/pet_sprite.py: fixed `_center_content()` which failed with `'pygame.surface.Surface' object has no attribute 'tobytes'`. The Surface object has no `.tobytes()` method; replaced with `pygame.image.tobytes(surface, "RGBA")` which is the correct API for extracting pixel data from a pygame Surface.

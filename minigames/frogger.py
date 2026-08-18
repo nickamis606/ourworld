@@ -7,6 +7,7 @@ Polished for visual feedback: death splash, home-fill glow,
 centered level banner, level-transition pause, and clear restart path.
 """
 
+import math
 import pygame
 import random
 from dataclasses import dataclass
@@ -123,7 +124,10 @@ class FroggerGame(MinigameBase):
         # Feedback timing (ms remaining)
         self.death_timer = 0
         self.death_type = DEATH_NONE
+        self.flash_timer = 0        # brief white screen flash on death
+        self.golden_flash = 0       # golden screen flash on last home fill
         self.home_glow_timers = [0] * 5
+        self.heart_flash = 0        # lives flash white when a life is lost
         self.level_transition_timer = 0
 
     # ------------------------------------------------------------------
@@ -251,6 +255,12 @@ class FroggerGame(MinigameBase):
         ms = dt * 1000
         if self.death_timer > 0:
             self.death_timer = max(0, self.death_timer - ms)
+        if self.flash_timer > 0:
+            self.flash_timer = max(0, self.flash_timer - ms)
+        if self.golden_flash > 0:
+            self.golden_flash = max(0, self.golden_flash - ms)
+        if self.heart_flash > 0:
+            self.heart_flash = max(0, self.heart_flash - ms)
         if self.level_transition_timer > 0:
             self.level_transition_timer -= ms
             if self.level_transition_timer <= 0:
@@ -310,6 +320,7 @@ class FroggerGame(MinigameBase):
                 self.score += 100 + (self.level * 20)
 
                 if all(self.homes):
+                    self.golden_flash = 600  # golden screen flash for last home
                     self.level_transition_timer = LEVEL_TRANSITION_MS
                 else:
                     self.death_timer = FROG_RESET_MS
@@ -325,6 +336,8 @@ class FroggerGame(MinigameBase):
         self.lives -= 1
         self.death_type = death_type
         self.death_timer = DEATH_FLASH_MS
+        self.flash_timer = 120       # 120 ms white screen flash
+        self.heart_flash = 500       # 500 ms heart flash
         if self.lives <= 0:
             self.game_over = True
             # Keep running so the game-over screen is drawn
@@ -378,6 +391,10 @@ class FroggerGame(MinigameBase):
                                     (hx - 2, 2 * CELL_SIZE + 2,
                                      CELL_SIZE * 2 + 4, CELL_SIZE - 2), 2)
             else:
+                # Dashed-looking border so empty homes stand out from the SAFE background
+                pygame.draw.ellipse(target, (100, 160, 100),
+                                    (hx - 1, 2 * CELL_SIZE + 3,
+                                     CELL_SIZE * 2 + 2, CELL_SIZE - 4), 2)
                 pygame.draw.ellipse(target, HOME_EMPTY,
                                     (hx, 2 * CELL_SIZE + 4,
                                      CELL_SIZE * 2, CELL_SIZE - 6))
@@ -416,6 +433,20 @@ class FroggerGame(MinigameBase):
             # Flash white during death flash
             pygame.draw.ellipse(target, (255, 255, 255),
                                 (fx, fy, CELL_SIZE, CELL_SIZE))
+        elif self.death_timer > 0 and self.death_timer < FROG_RESET_MS:
+            # Fade-in on respawn: frog grows from transparent to solid
+            fade_progress = self.death_timer / FROG_RESET_MS
+            alpha = int(200 * fade_progress)
+            frog_surf = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+            pygame.draw.ellipse(frog_surf, FROG + (alpha,),
+                                (2, 5, CELL_SIZE - 4, CELL_SIZE - 9))
+            pygame.draw.ellipse(frog_surf, FROG + (alpha,),
+                                (5, 0, CELL_SIZE - 10, CELL_SIZE - 5))
+            pygame.draw.ellipse(frog_surf, FROG_DARK + (alpha,),
+                                (5, 0, CELL_SIZE - 10, CELL_SIZE - 5), 2)
+            pygame.draw.circle(frog_surf, FROG_EYE + (alpha,), (9, 4), 3)
+            pygame.draw.circle(frog_surf, FROG_EYE + (alpha,), (14, 4), 3)
+            target.blit(frog_surf, (fx, fy))
         else:
             pygame.draw.ellipse(target, FROG,
                                 (fx + 2, fy + 5, CELL_SIZE - 4, CELL_SIZE - 9))
@@ -428,19 +459,34 @@ class FroggerGame(MinigameBase):
             pygame.draw.circle(target, (20, 20, 20), (fx + 10, fy + 4), 1)
             pygame.draw.circle(target, (20, 20, 20), (fx + 15, fy + 4), 1)
 
+        # --- White screen flash ---
+        if self.flash_timer > 0:
+            flash_alpha = min(255, int(200 * (self.flash_timer / 120)))
+            flash_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            flash_surf.fill((255, 255, 255, flash_alpha))
+            target.blit(flash_surf, (0, 0))
+
+        # --- Golden screen flash (last home fill) ---
+        if self.golden_flash > 0:
+            glow = 0.5 + 0.5 * ((now // 200) % 2)
+            flash_alpha = min(255, int(180 * glow * (self.golden_flash / 600)))
+            flash_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            flash_surf.fill((255, 240, 140, flash_alpha))
+            target.blit(flash_surf, (0, 0))
+
         # --- Death splash overlay ---
         if self.death_timer > 0:
             splash = ((255, 100, 100) if self.death_type == DEATH_CAR
                       else (80, 140, 255))
             cx = fx + CELL_SIZE // 2
             cy = fy + CELL_SIZE // 2
-            for ring in range(1, 4):
-                alpha = max(0, int(128 * (1 - ring / 4)))
+            for ring in range(1, 6):
+                alpha = max(0, int(160 * (1 - ring / 5)))
                 r = int(splash[0] * alpha / 255)
                 g = int(splash[1] * alpha / 255)
                 b = int(splash[2] * alpha / 255)
                 pygame.draw.circle(target, (r, g, b), (cx, cy),
-                                   ring * 8 + 4, 2)
+                                   ring * 10 + 4, 3)
 
         # --- UI ---
         # Large centered level indicator
@@ -449,8 +495,17 @@ class FroggerGame(MinigameBase):
                      (SCREEN_WIDTH // 2 - level_text.get_width() // 2, 8))
         target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT),
                      (12, 8 + level_text.get_height() + 4))
-        target.blit(self.small_font.render(f"LIVES: {'♥' * self.lives}", True, TEXT),
-                     (12, 36))
+        if self.heart_flash > 0:
+            pulse = 0.5 + 0.5 * ((now // 100) % 2)
+            heart_color = (int(255 * pulse + 250 * (1 - pulse)),
+                           int(80 * pulse + 250 * (1 - pulse)),
+                           int(80 * pulse + 250 * (1 - pulse)))
+            heart_text = f"LIVES: {'♥' * self.lives}"
+            target.blit(self.small_font.render(heart_text, True, heart_color),
+                        (12, 36))
+        else:
+            target.blit(self.small_font.render(f"LIVES: {'♥' * self.lives}", True, TEXT),
+                         (12, 36))
         target.blit(self.small_font.render("OURWORLD ARCADE • FROGGER", True, ACCENT),
                      (SCREEN_WIDTH - 250, 10))
 
@@ -468,15 +523,21 @@ class FroggerGame(MinigameBase):
 
         # Level-transition banner
         if self.level_transition_timer > 0:
-            alpha = min(255, int(255 * min(1, self.level_transition_timer / 400)))
-            banner = pygame.Surface((400, 80), pygame.SRCALPHA)
-            banner.fill((10, 20, 10, alpha // 2))
+            # Breathing pulse: peaks in middle of transition, fades at edges
+            t = self.level_transition_timer / LEVEL_TRANSITION_MS
+            pulse = 0.65 + 0.35 * (0.5 + 0.5 * math.sin(t * math.pi))
+            alpha = min(255, int(255 * pulse * min(1, self.level_transition_timer / 400)))
+            banner = pygame.Surface((420, 90), pygame.SRCALPHA)
+            banner.fill((8, 18, 8, alpha // 3))
             target.blit(banner,
-                        (SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT // 2 - 40))
+                        (SCREEN_WIDTH // 2 - 210, SCREEN_HEIGHT // 2 - 45))
             msg = self.big_font.render(
                 f"LEVEL {self.level - 1} COMPLETE!", True, (255, 240, 180))
-            target.blit(msg,
-                        (SCREEN_WIDTH // 2 - msg.get_width() // 2,
+            # Subtle scale pulse on text
+            scale = int(1 + 0.04 * pulse)
+            scaled_msg = pygame.transform.scale_by(msg, scale)
+            target.blit(scaled_msg,
+                        (SCREEN_WIDTH // 2 - scaled_msg.get_width() // 2,
                          SCREEN_HEIGHT // 2 - 20))
 
         # Game-over screen

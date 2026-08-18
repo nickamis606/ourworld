@@ -29,8 +29,20 @@ Throwaway project — procedural fallback for pet sprites not existing.
   3. If lives == 0: `game_over = True`, game continues drawing the Game Over screen
   4. In ArcadeScene: 1800ms delay after game_over lets player see the screen and press 'R' to retry or ESC to quit
 
-**Open Frogger polish:**
+**Open Frogger polish (2026-08-18):**
 - Sound effects for death, home fill, and level complete (would require an assets directory for Frogger).
 - Home-fill could show a small frog-silhouette icon in the filled home slot (currently just the glowing ellipse).
 - Score popup animation when filling a home (+100 + level×20).
 - "Press any key to start" overlay for level transitions instead of auto-advance (gives player a moment to prepare).
+
+### Frogger visual + feel polish (2026-08-18)
+
+**Death → respawn flow (4 changes):**
+1. **White screen flash (120 ms)** — `_lose_life()` now sets `self.flash_timer = 120`. During draw, a white alpha surface is blitted over the entire screen, fading out linearly over 120 ms. Gives a sharp "hit" moment.
+2. **Expanded splash rings** — Increased from 3 to 6 rings, larger per-ring radius (`ring * 10 + 4`), thicker stroke (3 px). Rings now clearly radiate outward and persist for the full 700 ms death timer.
+3. **Frog fade-in on respawn** — During the last 300 ms of the death timer (`death_timer < FROG_RESET_MS`), the frog is drawn with a per-pixel alpha that grows from ~0 to 200 over the period, using a per-frame surface. No longer snaps into existence.
+4. **Heart flash on life loss** — `_lose_life()` sets `self.heart_flash = 500`. The LIVES line pulses between red and white for 500 ms, making the lost life unmistakable.
+
+**Level-complete flow (2 changes):**
+5. **Golden screen flash (600 ms)** — When the last home is filled, `self.golden_flash = 600` is set. A golden-tinted (255, 240, 140) screen flash pulses with a fast blink during the flash period, giving a "victory" feel.
+6. **Breathing banner + text scale pulse** — The level-transition banner now uses a sine-based breathing pulse that peaks at the midpoint of the 1800 ms transition (not just a simple fade-in). The "LEVEL N COMPLETE!" text subtly scales up and down with the same pulse via `pygame.transform.scale_by`, making the moment feel alive rather than static.

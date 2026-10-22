@@ -5,6 +5,7 @@ Better visuals + noticeably progressive difficulty.
 """
 
 import pygame
+from engine.assets import font as _font
 import random
 from dataclasses import dataclass
 
@@ -39,9 +40,9 @@ class MinigameBase:
         self.clock = clock
         self.running = True
         self.score = 0
-        self.font = pygame.font.SysFont("arial", 26)
-        self.big_font = pygame.font.SysFont("arial", 48, bold=True)
-        self.small_font = pygame.font.SysFont("arial", 18)
+        self.font = _font(34)
+        self.big_font = _font(62, True)
+        self.small_font = _font(23)
 
     def handle_key(self, key): pass
     def update(self, dt): pass
@@ -137,9 +138,10 @@ class PetDash(MinigameBase):
             self.show_instructions = False
 
         # Physics
-        self.pet_vel_y += GRAVITY
-        self.pet_y += self.pet_vel_y
-        self.anim_frame += 0.25
+        k = min(dt, 0.05) * 60.0  # physics constants were tuned per 60 FPS frame
+        self.pet_vel_y += GRAVITY * k
+        self.pet_y += self.pet_vel_y * k
+        self.anim_frame += 0.25 * k
 
         if self.pet_y >= GROUND_Y:
             self.pet_y = GROUND_Y
@@ -154,7 +156,7 @@ class PetDash(MinigameBase):
             self.spawn_treat()
 
         # Move world
-        move_speed = self.speed
+        move_speed = self.speed * k
         for o in self.obstacles:
             o["x"] -= move_speed
         for t in self.treats:

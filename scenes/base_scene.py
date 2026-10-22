@@ -1,66 +1,35 @@
-#!/usr/bin/env python3
+"""BaseScene: interface every scene implements.
+
+The controller (main_pygame.Game) is the only thing that switches scenes;
+it calls on_exit() on the old scene and on_enter(**kwargs) on the new one.
 """
-BaseScene - Abstract base for all OurWorld scenes.
-
-Provides common interface, lifecycle hooks, and shared utilities.
-
-IMPORTANT: Subclasses MUST implement on_enter() / on_exit() to reset
-any transient UI state (map_mode, open panels, active minigames, etc.)
-so that state does not leak between scenes.
-"""
-
-import pygame
-from typing import Optional, Any
 
 
 class BaseScene:
-    """
-    Base class for all game scenes.
+    low_power_ok = True  # may the controller drop to idle FPS while here?
 
-    Lifecycle:
-        - on_enter(): Called by controller when this scene becomes the active one.
-          Use to reset flags (e.g. map_mode=False), refresh UI, start music, etc.
-        - on_exit(): Called by controller when leaving this scene.
-          Use to close overlays (map, shop panels), stop animations, clean minigame state.
+    def __init__(self, game):
+        self.game = game
+        self.state = game.state
 
-    Subclasses should implement:
-        handle_event(event)
-        update(dt)
-        draw(surface)
-        (and override on_enter/on_exit as needed)
-    """
+    def on_enter(self, **kwargs):
+        pass
 
-    def __init__(self, game_state: Any, screen: pygame.Surface):
-        self.game_state = game_state
-        self.screen = screen
-        self.sprites = pygame.sprite.Group()  # Common sprite group
-        self.active = True
-        self.next_scene = None   # Scene switch request handled by controller
+    def on_exit(self):
+        pass
 
-    def handle_event(self, event: pygame.event.Event):
-        """Handle a single pygame event. Override in subclass."""
+    def handle_action(self, action: str):
+        pass
+
+    def handle_event(self, event):
+        """Raw events (mouse/touch). Keys and pads arrive via handle_action."""
         pass
 
     def update(self, dt: float):
-        """Update scene logic. Override in subclass."""
-        self.sprites.update(dt)
+        pass
 
-    def draw(self, surface: pygame.Surface):
-        """Draw the scene. Override in subclass. MUST start with full opaque background."""
-        self.sprites.draw(surface)
+    def draw(self, surface):
+        raise NotImplementedError
 
-    def on_enter(self):
-        """Called when the scene becomes the current active scene.
-        Override to reset transient state so nothing from previous visit leaks.
-        """
-        self.active = True
-
-    def on_exit(self):
-        """Called when leaving this scene (before switching away).
-        Override to close any open overlays/panels (e.g. map_mode=False).
-        """
-        self.active = False
-
-    def switch_to(self, new_scene: 'BaseScene'):
-        """Helper to request a scene change (to be handled by main controller)."""
-        self.next_scene = new_scene
+    def is_animating(self) -> bool:
+        return False

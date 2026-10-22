@@ -6,6 +6,7 @@ OurWorld Arcade - Snake (final clean version)
 """
 
 import pygame
+from engine.assets import font as _font
 import random
 from dataclasses import dataclass
 
@@ -40,9 +41,9 @@ class MinigameBase:
         self.clock = clock
         self.running = True
         self.score = 0
-        self.font = pygame.font.SysFont("arial", 24)
-        self.big_font = pygame.font.SysFont("arial", 48, bold=True)
-        self.small_font = pygame.font.SysFont("arial", 18)
+        self.font = _font(31)
+        self.big_font = _font(62, True)
+        self.small_font = _font(23)
 
     def handle_key(self, key): pass
     def update(self, dt): pass
@@ -120,8 +121,9 @@ class SnakeGame(MinigameBase):
         if self.show_instructions and self.instruction_timer > 2800:
             self.show_instructions = False
 
-        now = pygame.time.get_ticks()
-        if now - self.last_move_time < self.move_interval: return
+        self._move_acc = getattr(self, "_move_acc", 0.0) + dt * 1000
+        if self._move_acc < self.move_interval: return
+        self._move_acc = 0.0
 
         self.direction = self.next_direction
         hx, hy = self.snake[0]
@@ -139,16 +141,19 @@ class SnakeGame(MinigameBase):
             if self.score % 5 == 0: self.move_interval = max(70, self.move_interval - 8)
         else:
             self.snake.pop()
-        self.last_move_time = now
 
     def draw(self, screen=None):
         target = screen or self.screen
-        target.fill(BG_COLOR)
-
-        for x in range(0, SCREEN_WIDTH, CELL_SIZE):
-            pygame.draw.line(target, GRID_COLOR, (x, 0), (x, SCREEN_HEIGHT), 1)
-        for y in range(0, SCREEN_HEIGHT, CELL_SIZE):
-            pygame.draw.line(target, GRID_COLOR, (0, y), (SCREEN_WIDTH, y), 1)
+        bg = getattr(SnakeGame, "_bg", None)
+        if bg is None:
+            bg = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            bg.fill(BG_COLOR)
+            for x in range(0, SCREEN_WIDTH, CELL_SIZE):
+                pygame.draw.line(bg, GRID_COLOR, (x, 0), (x, SCREEN_HEIGHT), 1)
+            for y in range(0, SCREEN_HEIGHT, CELL_SIZE):
+                pygame.draw.line(bg, GRID_COLOR, (0, y), (SCREEN_WIDTH, y), 1)
+            SnakeGame._bg = bg
+        target.blit(bg, (0, 0))
 
         for i, (gx, gy) in enumerate(self.snake):
             rect = pygame.Rect(gx*CELL_SIZE, gy*CELL_SIZE, CELL_SIZE, CELL_SIZE)
@@ -167,7 +172,7 @@ class SnakeGame(MinigameBase):
         target.blit(self.small_font.render("OURWORLD ARCADE • SNAKE", True, ACCENT), (SCREEN_WIDTH - 220, 10))
 
         if self.game_over:
-            over = self.big_font.render("GAME OVER - R to restart, ESC to quit", True, (255, 180, 180))
+            over = self.big_font.render("GAME OVER", True, (255, 180, 180))
             target.blit(over, (SCREEN_WIDTH//2 - over.get_width()//2, 200))
 
 

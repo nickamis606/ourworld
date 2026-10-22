@@ -1,73 +1,61 @@
-#!/usr/bin/env python3
-"""
-common.py - Shared UI helper functions for OurWorld.
-
-Contains small, reusable drawing utilities to keep scene and UI code clean.
-"""
-
+"""Shared UI drawing helpers (pygame)."""
 import pygame
-from typing import Tuple
+
+from engine import assets
+
+INK = (40, 36, 52)
+PANEL = (255, 250, 240)
+PANEL_EDGE = (120, 90, 70)
+FOCUS = (255, 196, 40)
+_panels: dict = {}
 
 
-def draw_rounded_rect(surface: pygame.Surface, rect: pygame.Rect, color: Tuple[int, int, int],
-                      radius: int = 8, width: int = 0):
-    """
-    Draw a rounded rectangle.
-
-    Args:
-        surface: Target surface
-        rect: Rectangle to draw
-        color: Fill or border color
-        radius: Corner radius
-        width: If > 0, draws only the border with this thickness
-    """
-    if width > 0:
-        pygame.draw.rect(surface, color, rect, width=width, border_radius=radius)
-    else:
-        pygame.draw.rect(surface, color, rect, border_radius=radius)
+def panel(size, color=(255, 250, 240, 235), radius=12, edge=(120, 90, 70)) -> pygame.Surface:
+    """Cached translucent rounded panel."""
+    key = (size, color, radius, edge)
+    s = _panels.get(key)
+    if s is None:
+        s = pygame.Surface(size, pygame.SRCALPHA)
+        pygame.draw.rect(s, color, s.get_rect(), border_radius=radius)
+        if edge:
+            pygame.draw.rect(s, edge, s.get_rect(), 2, border_radius=radius)
+        _panels[key] = s
+    return s
 
 
-def draw_text_centered(surface: pygame.Surface, text: str, font: pygame.font.Font,
-                      color: Tuple[int, int, int], center_pos: Tuple[int, int]):
-    """
-    Draw text centered at a given position.
-    """
-    text_surf = font.render(text, True, color)
-    text_rect = text_surf.get_rect(center=center_pos)
-    surface.blit(text_surf, text_rect)
+def draw_rounded_rect(surface, rect, color, radius=8, width=0):
+    pygame.draw.rect(surface, color, rect, width=width, border_radius=radius)
 
 
-def draw_text(surface: pygame.Surface, text: str, font: pygame.font.Font,
-             color: Tuple[int, int, int], pos: Tuple[int, int]):
-    """
-    Simple text drawing at top-left position.
-    """
-    text_surf = font.render(text, True, color)
-    surface.blit(text_surf, pos)
+def draw_text_centered(surface, text, size, color, center, bold=False):
+    t = assets.text(text, size, color, bold)
+    surface.blit(t, t.get_rect(center=center))
 
 
-def draw_progress_bar(surface: pygame.Surface, rect: pygame.Rect, value: float,
-                     max_value: float = 100.0, bg_color=(180, 180, 180),
-                     fill_color=(100, 200, 100), border_radius: int = 4):
-    """
-    Draw a simple progress bar.
-    """
-    # Background
+def draw_progress_bar(surface, rect, value, max_value=100.0, bg_color=(80, 70, 80),
+                      fill_color=(100, 200, 100), border_radius=4):
     pygame.draw.rect(surface, bg_color, rect, border_radius=border_radius)
-
-    # Fill
-    if max_value > 0:
-        fill_ratio = max(0.0, min(1.0, value / max_value))
-        fill_width = int(rect.width * fill_ratio)
-        if fill_width > 0:
-            fill_rect = pygame.Rect(rect.x, rect.y, fill_width, rect.height)
-            pygame.draw.rect(surface, fill_color, fill_rect, border_radius=border_radius)
+    ratio = max(0.0, min(1.0, value / max_value)) if max_value else 0
+    w = int(rect.width * ratio)
+    if w > 0:
+        pygame.draw.rect(surface, fill_color, (rect.x, rect.y, w, rect.height), border_radius=border_radius)
 
 
-def get_centered_rect(center: Tuple[int, int], width: int, height: int) -> pygame.Rect:
-    """
-    Return a rect centered at the given point.
-    """
-    x = center[0] - width // 2
-    y = center[1] - height // 2
-    return pygame.Rect(x, y, width, height)
+def hint_bar(surface, items, y=462):
+    """Draw a row of [button] label hints, centred, e.g. [("A", "Choose"), ("B", "Back")]."""
+    surfs = []
+    for btn, label in items:
+        b = assets.text(btn, 18, (255, 255, 255), bold=True)
+        l = assets.text(label, 18, (250, 246, 236))
+        surfs.append((b, l))
+    total = sum(b.get_width() + l.get_width() + 30 for b, l in surfs)
+    x = (surface.get_width() - total) // 2
+    bg = panel((total + 16, 22), (30, 26, 40, 170), 10, None)
+    surface.blit(bg, (x - 8, y - 4))
+    for b, l in surfs:
+        pill = pygame.Rect(x, y - 2, b.get_width() + 10, 18)
+        pygame.draw.rect(surface, (90, 80, 120), pill, border_radius=8)
+        surface.blit(b, (x + 5, y))
+        x += pill.width + 4
+        surface.blit(l, (x, y))
+        x += l.get_width() + 16

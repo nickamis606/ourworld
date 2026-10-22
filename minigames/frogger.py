@@ -9,6 +9,7 @@ centered level banner, level-transition pause, and clear restart path.
 
 import math
 import pygame
+from engine.assets import font as _font
 import random
 from dataclasses import dataclass
 
@@ -65,9 +66,9 @@ class MinigameBase:
         self.clock = clock
         self.running = True
         self.score = 0
-        self.font = pygame.font.SysFont("arial", 24)
-        self.big_font = pygame.font.SysFont("arial", 36, bold=True)
-        self.small_font = pygame.font.SysFont("arial", 15)
+        self.font = _font(31)
+        self.big_font = _font(47, True)
+        self.small_font = _font(20)
 
     def handle_key(self, key): pass
     def update(self, dt): pass
@@ -214,6 +215,9 @@ class FroggerGame(MinigameBase):
             moved = True
 
         if moved:
+            lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
+            if not (lane and lane.get('is_water', False)):
+                self.frog_x = int(round(self.frog_x))  # snap back to grid on land
             self.last_move_time = now
             if self.frog_y < 17:
                 self.score += 8
@@ -232,16 +236,18 @@ class FroggerGame(MinigameBase):
         if self.show_instructions and self.instruction_timer > 2800:
             self.show_instructions = False
 
+        k = min(dt, 0.05) * 30.0  # lane speeds were tuned per 30 FPS frame
+        self._k = k
         # Vehicles
         for car in self.cars:
-            car['x'] += car['speed'] * car['dir'] * 0.5
+            car['x'] += car['speed'] * car['dir'] * 0.5 * k
             if car['x'] < -car['width']:
                 car['x'] = GRID_COLS + 2
             if car['x'] > GRID_COLS + 2:
                 car['x'] = -car['width']
 
         for log in self.logs:
-            log['x'] += log['speed'] * log['dir'] * 0.5
+            log['x'] += log['speed'] * log['dir'] * 0.5 * k
             if log['x'] < -log['width']:
                 log['x'] = GRID_COLS + 2
             if log['x'] > GRID_COLS + 2:
@@ -301,8 +307,11 @@ class FroggerGame(MinigameBase):
                     log_right = log['x'] + log['width']
                     if log_left - 0.2 <= self.frog_x < log_right + 0.2:
                         on_log = True
-                        self.frog_x += log['speed'] * log['dir'] * 0.65
-                        self.frog_x = max(0, min(GRID_COLS - 1, int(round(self.frog_x))))
+                        # ride the log at exactly the log's speed (float position);
+                        # the old code rounded every frame, so the frog either
+                        # stuck in place or outran the log and drowned.
+                        self.frog_x += log['speed'] * log['dir'] * 0.5 * getattr(self, '_k', 1.0)
+                        self.frog_x = max(0.0, min(GRID_COLS - 1.0, self.frog_x))
                         break
             if not on_log and self.death_timer <= 0:
                 self._lose_life(DEATH_WATER)

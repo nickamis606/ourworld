@@ -1,403 +1,440 @@
-#!/usr/bin/env python3
-"""
-MainScene - Primary gameplay scene.
+"""MainScene: the pet at its current location.
 
-Clean version with pot only drawn when home_decorated is True.
-Animations now follow actual pet position (works in all locations).
+Owns only presentation state (focus, effects, overlays). Every rule lives in
+core.GameState; this scene turns input into GameState calls and turns the
+returned result dicts into animation + feedback.
 """
+import math
 
 import pygame
-import time
-import math
-import os
-from typing import Optional, Any
 
+from core import world
+from core.game_state import CARE_ACTIONS, LOCATION_BONUS
+from core.roster import roster_entry
+from engine import assets
 from scenes.base_scene import BaseScene
+from sprites import backdrops
+from sprites.action_animator import ActionAnimator
+from sprites.fx import Effects, pet_pose, NEED_COLORS
 from sprites.pet_sprite import PetSprite
-from sprites.location_background import LocationBackground
-from ui.stats_bar import StatsBar
-from ui.action_buttons import ActionButtons
-from ui.shop_ui import ShopUI
-from ui.context_actions import ContextActions
-from ui.arcade_panel import ArcadePanel
+from ui.action_bar import ActionBar, ActionItem
+from ui.common import hint_bar, panel
+from ui.icons import icon
 from ui.map_overlay import MapOverlay
-from core.action_animator import ActionAnimator
+from ui.menu import Menu
+from ui.stats_bar import StatsBar
+
+CARE_LABELS = {"feed": "Feed", "play": "Play", "clean": "Clean", "rest": "Rest"}
+CARE_COLORS = {"feed": (226, 128, 50), "play": (60, 160, 90), "clean": (60, 130, 200), "rest": (130, 100, 200)}
+FEET = {"home": (320, 378), "backyard": (330, 352)}
+DEFAULT_FEET = (320, 372)
+MOOD_TEXT = {"happy": ("Happy", (60, 170, 80)), "okay": ("Okay", (200, 150, 30)), "sad": ("Sad", (210, 70, 70))}
+TOAST_SECS = 2.6
+
+
+def _fmt_deltas(d):
+    names = {"hunger": "Food", "happiness": "Joy", "energy": "Energy", "cleanliness": "Clean"}
+    return ", ".join(f"{'+' if v > 0 else ''}{v} {names[k]}" for k, v in d.items())
 
 
 class MainScene(BaseScene):
-    def __init__(self, game_state: Any, screen: pygame.Surface, pet_config: dict):
-        super().__init__(game_state, screen)
-
-        self.pet_config = pet_config
-        self.width = screen.get_width()
-        self.height = screen.get_height()
-
-        self.font = pygame.font.SysFont("Arial", 20)
-        self.small_font = pygame.font.SysFont("Arial", 14)
-        self.tiny_font = pygame.font.SysFont("Arial", 12)
-
-        self.stats_bar = StatsBar(self.width, self.small_font, self.tiny_font)
-        self.action_buttons = ActionButtons(y=415, small_font=self.small_font)
-        self.shop_ui = ShopUI(self.small_font)
-        self.context_actions = ContextActions(self.small_font)
-        self.arcade_panel = ArcadePanel(self.small_font, self.tiny_font)
-        self.map_overlay = MapOverlay(self.small_font, self.font)
-
-        self.pet_sprite = PetSprite(pet_config, size=0.95, pos=(340, 300))
-        self.pet_bob = 0.0
-
-        self.location_bg = LocationBackground(self.width, self.height)
-        self.bg_surfaces: dict[str, pygame.Surface] = {}
-
-        self._prepare_location_background(self.game_state.pet.location)
-        self._load_location_background(self.game_state.pet.location)
-
+    def __init__(self, game):
+        super().__init__(game)
+        self.stats = StatsBar()
+        self.bar = ActionBar()
+        self.map = MapOverlay()
+        self.pause = None
+        self.fx = Effects()
         self.animator = ActionAnimator()
+        self.anim_kind = None
+        self.anim_t = 0.0
+        self.anim_dur = 0.0
+        self.toast = ""
+        self.toast_t = 0.0
+        self.toast_bad = False
+        self.t = 0.0
+        self.pet = None
+        self._species = None
+        self._bubble_t = 0.0
 
-        self.map_mode = False
-        self.status = f"Take good care of {game_state.pet.name}!"
-
-        self.next_scene = None
-
-    def _load_location_background(self, location: str):
-        self.location_bg.load(location)
-
-    def handle_event(self, event: pygame.event.Event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            self._handle_click(event.pos)
-        elif event.type == pygame.KEYDOWN:
-            self._handle_key(event.key)
-
-    def _handle_key(self, key: int):
-        if key in (pygame.K_q, pygame.K_ESCAPE):
-            pygame.event.post(pygame.event.Event(pygame.QUIT))
-        elif key == pygame.K_f:
-            self.start_action("feed")
-        elif key == pygame.K_p:
-            self.start_action("play")
-        elif key == pygame.K_c:
-            self.start_action("clean")
-        elif key == pygame.K_r:
-            self.start_action("rest")
-        elif key == pygame.K_m:
-            self.map_mode = not self.map_mode
-
-    def _handle_click(self, pos: tuple):
-        if self.map_mode:
-            clicked = self.map_overlay.get_clicked_location(pos)
-            if clicked:
-                if clicked == "arcade":
-                    self.next_scene = "arcade"
-                else:
-                    self.change_location(clicked)
-                self.map_mode = False
-            return
-
-        btn_rects = self.action_buttons.get_all_rects()
-        if btn_rects["feed"].collidepoint(pos):
-            self.start_action("feed")
-        elif btn_rects["play"].collidepoint(pos):
-            self.start_action("play")
-        elif btn_rects["clean"].collidepoint(pos):
-            self.start_action("clean")
-        elif btn_rects["rest"].collidepoint(pos):
-            self.start_action("rest")
-        elif btn_rects["map"].collidepoint(pos):
-            self.map_mode = not self.map_mode
-
-        loc = self.game_state.pet.location
-
-        if loc == "arcade":
-            game = self.arcade_panel.get_clicked_game(pos)
-            if game:
-                self.next_scene = "arcade"
-                return
-
-        if loc in ("sweeties_candy_shop", "gens_garden"):
-            item = self.shop_ui.get_clicked_item(pos, loc)
-            if item:
-                result = self.game_state.buy_item(loc, item)
-                self.status = result.get("msg", "")
-                if result.get("success") and item in ("lollipop", "candy_apple"):
-                    self.start_action("feed")
-                return
-
-        action = self.context_actions.get_clicked_action(pos, loc)
-        if action:
-            if action == "plant_flower":
-                if self.game_state.pet.inventory.get("flower_seeds", 0) > 0:
-                    result = self.game_state.plant_seed("flower_seeds")
-                    self.status = result.get("msg", "")
-                    if result.get("success"):
-                        self.start_action("plant")
-            elif action == "plant_sunflower":
-                if self.game_state.pet.inventory.get("sunflower_seeds", 0) > 0:
-                    result = self.game_state.plant_seed("sunflower_seeds")
-                    self.status = result.get("msg", "")
-                    if result.get("success"):
-                        self.start_action("plant")
-            elif action == "harvest":
-                result = self.game_state.harvest_plant()
-                self.status = result.get("msg", "")
-            elif action == "decorate":
-                result = self.game_state.decorate_home()
-                self.status = result.get("msg", "")
-            return
-
-    def start_action(self, action: str):
-        if self.map_mode:
-            return
-        self.animator.start(action)
-        self.status = f"{action.capitalize()}ing..."
-
-    def change_location(self, loc: str):
-        if loc != self.game_state.pet.location:
-            self.game_state.change_location(loc)
-            info = self.game_state.get_current_location_info()
-            self.status = f"Moved to {info['name']}. {info['desc']}"
-
-            self._prepare_location_background(loc)
-            self._load_location_background(loc)
-
-            if loc == "home":
-                self.pet_sprite.rect.center = (340, 300)
-            else:
-                self.pet_sprite.rect.center = (340, 210)
-
-        self.map_mode = False
-
-    def update(self, dt: float):
-        super().update(dt)
-        self.pet_bob = (self.pet_bob + 0.08) % (2 * math.pi)
-        self.pet_sprite.set_bob(self.pet_bob)
-        self.pet_sprite.update(dt)
-        self.animator.update(dt)
-
-    def on_enter(self):
-        super().on_enter()
-        self.map_mode = False   # belt-and-suspenders reset on re-entry
+    # ---------------------------------------------------------- lifecycle
+    def on_enter(self, **kwargs):
+        sp = self.state.pet.species_id
+        if self.pet is None or self._species != sp:
+            self.pet = PetSprite(roster_entry(sp), height=128)
+            self._species = sp
+        self.pet.set_feet(*FEET.get(self.state.pet.location, DEFAULT_FEET))
+        self.map.hide()
+        self.pause = None
+        self.fx.clear()
+        self.anim_kind = None
+        self.animator.is_active = False
+        msg = kwargs.get("message")
+        if msg:
+            self.say(msg)
+        elif kwargs.get("arrived"):
+            info = self.state.get_current_location_info()
+            self.say(f"Welcome to {info['name']}!")
+        self.refresh_items()
 
     def on_exit(self):
-        """Reset transient UI state when leaving MainScene (e.g. to Arcade).
-        This prevents the map overlay from staying visible when returning later.
-        Called automatically by the controller.
-        """
-        super().on_exit()
-        self.map_mode = False
+        self.map.hide()
+        self.pause = None
 
-    def draw(self, surface: pygame.Surface):
-        loc = self.game_state.pet.location
+    def is_animating(self):
+        return bool(self.anim_kind or self.fx.texts or self.fx.parts or self.toast_t > 0)
 
-        if self.map_mode:
-            if loc in self.bg_surfaces:
-                surface.blit(self.bg_surfaces[loc], (0, 0))
-            else:
-                surface.fill((210, 200, 230))
-            self.map_overlay.draw(surface, loc)
-            needs = self.game_state.pet.needs
-            total_seeds = (self.game_state.pet.inventory.get("flower_seeds", 0) +
-                           self.game_state.pet.inventory.get("sunflower_seeds", 0))
-            self.stats_bar.draw(surface, needs, self.game_state.pet.coins, total_seeds)
-            return
+    # ------------------------------------------------------------ helpers
+    def say(self, text, bad=False):
+        self.toast, self.toast_t, self.toast_bad = text, TOAST_SECS, bad
 
-        if self.location_bg.has_asset():
-            self.location_bg.draw(surface)
-        else:
-            if loc in self.bg_surfaces:
-                surface.blit(self.bg_surfaces[loc], (0, 0))
-            else:
-                surface.fill((210, 200, 230))
-
-        needs = self.game_state.pet.needs
-        total_seeds = (self.game_state.pet.inventory.get("flower_seeds", 0) +
-                       self.game_state.pet.inventory.get("sunflower_seeds", 0))
-        self.stats_bar.draw(surface, needs, self.game_state.pet.coins, total_seeds)
-
-        if loc == "backyard":
-            self._draw_garden_plants(surface)
+    def refresh_items(self):
+        s = self.state
+        p = s.pet
+        loc = p.location
+        items = []
+        for a in ("feed", "play", "clean", "rest"):
+            ok, why = s.can_perform(a)
+            deltas = dict(CARE_ACTIONS[a][2])
+            desc = f"{CARE_LABELS[a]}: {_fmt_deltas(deltas)}"
+            b = LOCATION_BONUS.get(loc)
+            if b and b[0] == a:
+                desc += f"  ({b[2]} {_fmt_deltas(b[1])})"
+            if not ok:
+                desc = why
+            items.append(ActionItem(a, CARE_LABELS[a], a, desc, ok, color=CARE_COLORS[a]))
         if loc == "home":
-            self._draw_home_decoration(surface)
-
-        self.pet_sprite.draw(surface)
-        self._draw_mood(surface)
-        self._draw_status(surface)
-        # Get pulse state for button highlight
-        pulse_name, pulse_alpha = self.animator.get_pulse()
-        self.action_buttons.draw(surface, anim_state_active=self.animator.is_active,
-                                 pulse_action=pulse_name, pulse_alpha=pulse_alpha)
-
-        self.shop_ui.draw(surface, loc)
-
-        has_mature = any(p.get("stage", 0) >= 3 for p in self.game_state.pet.garden)
-        self.context_actions.draw(surface, loc, self.game_state.pet.inventory, has_mature)
-
-        if loc == "arcade":
-            self.arcade_panel.draw(surface)
-
-        if self.animator.is_active:
-            px, py = self.pet_sprite.rect.center
-            self.animator.draw(surface, int(px), int(py))
-
-        hint = self.tiny_font.render("F/P/C/R • M=Map • Q=Quit", True, (100, 100, 100))
-        surface.blit(hint, (15, 455))
-
-    def _prepare_location_background(self, loc: str):
-        bg = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-
-        if loc == "home":
-            pygame.draw.rect(bg, (200, 170, 130), (0, 260, self.width, 220))
-            pygame.draw.rect(bg, (180, 140, 110), (0, 0, self.width, 260))
-            pygame.draw.rect(bg, (135, 206, 250), (480, 70, 110, 95), width=6)
-            pygame.draw.rect(bg, (255, 245, 200, 70), (485, 75, 100, 85), border_radius=3)
-            for i in range(3):
-                pygame.draw.line(bg, (100, 80, 60), (485, 75 + i*28), (585, 75 + i*28), 2)
-            pygame.draw.line(bg, (100, 80, 60), (535, 75), (535, 160), 2)
-            pygame.draw.ellipse(bg, (140, 80, 60), (80, 300, 200, 90))
-            pygame.draw.ellipse(bg, (120, 60, 40), (90, 310, 180, 70))
-            pygame.draw.rect(bg, (120, 80, 50), (300, 340, 80, 12))
-            pygame.draw.rect(bg, (100, 60, 30), (305, 352, 8, 35))
-            pygame.draw.rect(bg, (100, 60, 30), (367, 352, 8, 35))
-            pygame.draw.rect(bg, (90, 60, 40), (40, 120, 120, 18))
-            for i, c in enumerate([(200,80,80), (80,160,80), (80,120,200), (220,180,60)]):
-                pygame.draw.rect(bg, c, (50 + i*28, 123, 20, 12))
-
-        elif loc == "park":
-            pygame.draw.rect(bg, (120, 180, 120), (0, 260, self.width, 220))
-            for x in range(0, 640, 40):
-                pygame.draw.ellipse(bg, (100, 160, 100), (x, 280 + (x % 80)//2, 50, 25))
-            for tx, ty, s in [(80, 200, 1.0), (520, 210, 0.9), (300, 195, 1.1), (150, 220, 0.75)]:
-                pygame.draw.rect(bg, (101, 67, 33), (tx-6*s, ty+10*s, 12*s, 35*s))
-                pygame.draw.circle(bg, (34, 160, 50), (tx, ty-5*s), 32*s)
-                pygame.draw.circle(bg, (30, 140, 45), (tx-12*s, ty+5*s), 20*s)
-                pygame.draw.circle(bg, (30, 140, 45), (tx+12*s, ty+5*s), 20*s)
-            pygame.draw.ellipse(bg, (180, 160, 130), (200, 340, 240, 50))
-            for fx, fy in [(220, 310), (400, 305), (280, 325)]:
-                pygame.draw.circle(bg, (255, 100, 150), (fx, fy), 6)
-                pygame.draw.circle(bg, (255, 200, 80), (fx, fy), 3)
-
+            n = p.inventory.get("flowers", 0)
+            items.append(ActionItem("decorate", "Decorate", "decorate",
+                                    "Decorate with 5 flowers: joy decays slower at home for 30 min"
+                                    if not p.home_decorated else
+                                    f"Home is decorated ({int(p.decoration_left // 60)} min left)",
+                                    n >= world.FLOWERS_TO_DECORATE, f"{n}/5", (200, 90, 150)))
         elif loc == "backyard":
-            pygame.draw.rect(bg, (140, 190, 120), (0, 260, self.width, 220))
-            pygame.draw.rect(bg, (120, 90, 60), (0, 355, self.width, 10))
-            for x in range(30, 610, 55):
-                pygame.draw.rect(bg, (100, 70, 40), (x, 340, 8, 30))
-            pygame.draw.rect(bg, (101, 67, 33), (60, 300, 520, 55), border_radius=6)
-            pygame.draw.rect(bg, (80, 50, 30), (60, 300, 520, 55), width=3, border_radius=6)
-            pygame.draw.rect(bg, (110, 80, 50), (500, 280, 70, 10))
-            pygame.draw.rect(bg, (90, 60, 30), (505, 290, 8, 22))
-            pygame.draw.rect(bg, (90, 60, 30), (557, 290, 8, 22))
+            for seed, label, ic in (("flower_seeds", "Flower", "plant_flower"),
+                                    ("sunflower_seeds", "Sunflwr", "plant_sunflower")):
+                n = p.inventory.get(seed, 0)
+                full = len(p.garden) >= world.GARDEN_SLOTS
+                desc = ("Garden is full - harvest first" if full else
+                        f"Plant {label.lower()} seeds ({n} left)" if n else "No seeds - buy some at Gen's Garden")
+                items.append(ActionItem("plant:" + seed, label, ic, desc, n > 0 and not full, str(n), (90, 150, 70)))
+            m = s.mature_plants()
+            items.append(ActionItem("harvest", "Harvest", "harvest",
+                                    f"Pick a grown plant for flowers + coins ({m} ready)" if m
+                                    else "Nothing ready yet - plants grow while you play",
+                                    m > 0, str(m) if m else "", (190, 130, 60)))
+        elif loc in ("sweeties_candy_shop", "gens_garden"):
+            for it in world.shop_items(loc):
+                afford = p.coins >= it["price"]
+                desc = f"{it['name']} - {it['price']} coins - {it['desc']}"
+                if not afford:
+                    desc = f"{it['name']} costs {it['price']} coins - win more at the Arcade"
+                short = it["name"].replace("Sunflower Seeds", "Sunflwr").replace(" Seeds", "").replace("Candy ", "")
+                items.append(ActionItem("buy:" + it["key"], short, it["key"], desc, afford,
+                                        str(it["price"]), (200, 70, 110) if it.get("eat") else (70, 140, 110)))
+        elif loc == "arcade":
+            from minigames import GAME_INFO
+            for key, info in GAME_INFO.items():
+                best = s.save_manager.get_high_score(key)
+                items.append(ActionItem("game:" + key, info["name"].replace("Pet ", ""), key,
+                                        f"{info['name']} - {info['how']}" + (f" Best: {best}" if best else ""),
+                                        True, str(best) if best else "", info["color"]))
+        items.append(ActionItem("map", "Map", "map", "Open the neighborhood map (Select / M)", True, color=(80, 120, 190)))
+        self.bar.set_items(items)
 
-        elif loc == "sweeties_candy_shop":
-            pygame.draw.rect(bg, (255, 235, 240), (0, 260, self.width, 220))
-            pygame.draw.rect(bg, (200, 50, 70), (130, 220, 380, 100), border_radius=10)
-            pygame.draw.polygon(bg, (210, 180, 140), [(120, 220), (320, 185), (520, 220)])
-            for i in range(8):
-                stripe_x = 135 + i * 45
-                pygame.draw.line(bg, (255, 200, 220), (stripe_x, 198), (stripe_x + 30, 198), 3)
-            pygame.draw.rect(bg, (110, 65, 35), (280, 250, 70, 70))
-            pygame.draw.circle(bg, (255, 215, 90), (335, 285), 6)
-            pygame.draw.circle(bg, (255, 130, 190), (155, 240), 18)
-            pygame.draw.circle(bg, (130, 200, 255), (485, 240), 18)
-            pygame.draw.circle(bg, (255, 190, 90), (165, 270), 12)
-            pygame.draw.circle(bg, (90, 180, 255), (475, 270), 12)
-            pygame.draw.rect(bg, (255, 250, 220), (160, 235, 25, 25), border_radius=3)
-            pygame.draw.rect(bg, (255, 250, 220), (455, 235, 25, 25), border_radius=3)
+    # -------------------------------------------------------------- input
+    def handle_action(self, a):
+        if self.pause:
+            return self._pause_action(a)
+        if self.map.open:
+            return self._map_action(a)
+        if a == "LEFT":
+            self.bar.move(-1)
+        elif a == "RIGHT":
+            self.bar.move(1)
+        elif a == "A":
+            self.activate(self.bar.current.id if self.bar.current else None)
+        elif a in ("SELECT", "UP"):
+            self.map.show(self.state.pet.location)
+        elif a == "START":
+            self.open_pause()
+        elif a == "B":
+            self.bar.focus_id("map")
+        elif a == "L":
+            self.bar.move(-1)
+        elif a == "R":
+            self.bar.move(1)
+        elif a.startswith("HOT_"):
+            act = a[4:].lower()
+            self.bar.focus_id(act)
+            self.activate(act)
 
-        elif loc == "gens_garden":
-            pygame.draw.rect(bg, (140, 190, 120), (0, 260, self.width, 220))
-            pygame.draw.rect(bg, (120, 85, 55), (80, 290, 480, 80), border_radius=8)
-            pygame.draw.rect(bg, (90, 60, 35), (80, 290, 480, 80), width=4, border_radius=8)
-            for row in range(3):
-                y = 305 + row * 22
-                pygame.draw.line(bg, (60, 130, 50), (100, y), (540, y), 2)
-            for x in [140, 240, 340, 440]:
-                pygame.draw.line(bg, (130, 95, 60), (x, 285), (x, 365), 3)
-            pygame.draw.circle(bg, (255, 100, 150), (160, 310), 7)
-            pygame.draw.circle(bg, (255, 200, 80), (260, 320), 7)
-            pygame.draw.circle(bg, (150, 180, 255), (360, 308), 7)
-            pygame.draw.circle(bg, (255, 150, 200), (460, 318), 7)
-
-        else:
-            pygame.draw.rect(bg, (50, 45, 70), (0, 260, self.width, 220))
-            for x_pos in (120, 400):
-                pygame.draw.rect(bg, (40, 40, 55), (x_pos, 260, 120, 100), border_radius=8)
-
-        self.bg_surfaces[loc] = bg
-
-    def _draw_home_decoration(self, surface):
-        if not self.game_state.pet.home_decorated:
-            return
-
-        pot_path = os.path.join("assets", "backgrounds", "home", "layers", "pot.png")
-        if os.path.exists(pot_path):
-            try:
-                pot = pygame.image.load(pot_path).convert_alpha()
-                target_height = 85
-                if pot.get_height() > target_height:
-                    scale = target_height / pot.get_height()
-                    new_w = int(pot.get_width() * scale)
-                    pot = pygame.transform.smoothscale(pot, (new_w, target_height))
-                surface.blit(pot, (395, 255))
-            except Exception:
-                pass
-
-    def _draw_garden_plants(self, surface):
-        bed_x, bed_y = 100, 305
-        for i, plant in enumerate(self.game_state.pet.garden[:8]):
-            col = i % 4
-            row = i // 4
-            px = bed_x + col * 110
-            py = bed_y + row * 55
-            stage = plant.get("stage", 0)
-            ptype = plant.get("type", "flower")
-
-            if stage == 0:
-                pygame.draw.circle(surface, (101, 67, 33), (px + 20, py + 15), 6)
-            elif stage == 1:
-                pygame.draw.line(surface, (34, 120, 34), (px + 20, py + 25), (px + 20, py + 5), 3)
-            elif stage == 2:
-                pygame.draw.line(surface, (34, 120, 34), (px + 20, py + 25), (px + 20, py + 5), 3)
-                pygame.draw.circle(surface, (80, 180, 80), (px + 20, py + 3), 6)
-            else:
-                pygame.draw.line(surface, (34, 120, 34), (px + 20, py + 25), (px + 20, py + 5), 3)
-                if ptype == "flower":
-                    pygame.draw.circle(surface, (255, 100, 150), (px + 20, py + 2), 9)
+    def handle_event(self, e):
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            if self.pause:
+                i = self.pause.hit(e.pos, (320, 240))
+                if i is not None:
+                    self.pause.index = i
+                    self._pause_action("A")
+                return
+            if self.map.open:
+                key = self.map.hit(e.pos)
+                if key:
+                    self.map.cursor = world.LOCATIONS[key]["map"]
+                    self._map_action("A")
                 else:
-                    pygame.draw.circle(surface, (255, 200, 50), (px + 20, py + 2), 9)
+                    self.map.hide()
+                return
+            i = self.bar.hit(e.pos)
+            if i is not None:
+                self.bar.focus = i
+                self.activate(self.bar.current.id)
 
-    def _draw_mood(self, surface):
-        needs = self.game_state.pet.needs
-        avg = (needs.hunger + needs.happiness + needs.energy + needs.cleanliness) / 4
-        if avg > 70:
-            mood, col = "Happy :)", (60, 200, 80)
-        elif avg > 40:
-            mood, col = "Okay", (220, 180, 40)
-        else:
-            mood, col = "Sad :(", (230, 100, 100)
-        txt = self.font.render(mood, True, col)
-        surface.blit(txt, (300, 60))
+    def _map_action(self, a):
+        moves = {"LEFT": (-1, 0), "RIGHT": (1, 0), "UP": (0, -1), "DOWN": (0, 1)}
+        if a in moves:
+            self.map.move(*moves[a])
+        elif a in ("B", "SELECT", "START"):
+            self.map.hide()
+        elif a == "A":
+            dest = self.map.selected
+            self.map.hide()
+            if dest and dest != self.state.pet.location:
+                self.game.switch("travel", dest=dest)
+            elif dest:
+                self.say("You're already here!")
 
-    def _draw_status(self, surface):
-        txt = self.small_font.render(self.status, True, (20, 20, 20))
-        surface.blit(txt, (15, 375))
+    def open_pause(self):
+        self.pause = Menu("Paused", [("resume", "Resume"), ("save", "Save now"),
+                                     ("newpet", "New pet..."), ("quit", "Save & Quit")])
 
-    def change_location(self, loc: str):
-        if loc != self.game_state.pet.location:
-            self.game_state.change_location(loc)
-            info = self.game_state.get_current_location_info()
-            self.status = f"Moved to {info['name']}. {info['desc']}"
-            self._prepare_location_background(loc)
-            self._load_location_background(loc)
+    def _pause_action(self, a):
+        if a == "UP":
+            self.pause.move(-1)
+        elif a == "DOWN":
+            self.pause.move(1)
+        elif a in ("B", "START"):
+            self.pause = None
+        elif a == "A":
+            sel = self.pause.selected
+            self.pause = None
+            if sel == "save":
+                self.say("Saved!" if self.state.save() else "Save failed!", bad=False)
+            elif sel == "newpet":
+                self.game.switch("title", mode="select")
+            elif sel == "quit":
+                self.game.quit()
 
-            if loc == "home":
-                self.pet_sprite.rect.center = (340, 300)
-            else:
-                self.pet_sprite.rect.center = (340, 210)
+    # ------------------------------------------------------------ actions
+    def activate(self, item_id):
+        if not item_id:
+            return
+        if self.anim_kind and item_id != "map":
+            return  # one thing at a time; keeps feedback readable
+        item = next((i for i in self.bar.items if i.id == item_id), None)
+        if item_id == "map":
+            self.map.show(self.state.pet.location)
+            return
+        self.bar.press(item_id)
+        s = self.state
+        if item_id in CARE_ACTIONS:
+            res = s.perform_care_action(item_id)
+            self._feedback(res, item_id)
+        elif item_id.startswith("buy:"):
+            res = s.buy_item(s.pet.location, item_id[4:])
+            self._feedback(res, "feed" if res.get("eat") else "buy")
+        elif item_id.startswith("plant:"):
+            res = s.plant_seed(item_id[6:])
+            self._feedback(res, "plant")
+        elif item_id == "harvest":
+            res = s.harvest_plant()
+            self._feedback(res, "harvest")
+            if res.get("success"):
+                self.fx.float_text(f"+{res['coins']} coins", self.pet.feet.x + 60, self.pet.feet.y - 150,
+                                   NEED_COLORS["coins"])
+        elif item_id == "decorate":
+            res = s.decorate_home()
+            self._feedback(res, "decorate")
+        elif item_id.startswith("game:"):
+            if s.pet.needs.energy < 8:
+                self.say(f"{s.pet.name} is too tired for games. Rest first!", bad=True)
+                self._start_anim("sad", 0.6)
+                return
+            self.game.switch("arcade", game=item_id[5:])
+            return
+        elif item and not item.enabled:
+            self.say(item.desc, bad=True)
+        self.refresh_items()
 
-        self.map_mode = False
+    def _feedback(self, res, kind):
+        hx, hy = self.pet.feet.x, self.pet.feet.y - self.pet.height - 10
+        if not res.get("success"):
+            self.say(res.get("msg", "Can't do that"), bad=True)
+            self._start_anim("sad", 0.6)
+            return
+        self.say(res.get("msg", ""))
+        self._start_anim(kind, None)
+        self.fx.deltas(res.get("deltas", {}), hx, hy)
+        burst = {"feed": ((255, 120, 160), "heart"), "play": ((255, 200, 80), "sparkle"),
+                 "clean": ((170, 220, 255), "dot"), "rest": ((190, 170, 255), "sparkle"),
+                 "plant": ((120, 200, 90), "dot"), "harvest": ((255, 140, 180), "heart"),
+                 "decorate": ((255, 140, 180), "heart"), "buy": ((255, 220, 90), "sparkle")}
+        if kind in burst:
+            col, k = burst[kind]
+            self.fx.burst(hx, hy + 40, col, k, 12)
 
-    def update(self, dt: float):
-        super().update(dt)
-        self.pet_bob = (self.pet_bob + 0.08) % (2 * math.pi)
-        self.pet_sprite.set_bob(self.pet_bob)
-        self.pet_sprite.update(dt)
+    def _start_anim(self, kind, dur):
+        prop = kind if kind in ("feed", "play", "clean", "rest", "plant") else None
+        if prop:
+            self.animator.start(prop)
+            dur = self.animator.duration + self.animator.linger + 0.2
+        self.anim_kind = kind
+        self.anim_t = 0.0
+        self.anim_dur = dur or 0.8
+
+    # ------------------------------------------------------------- update
+    def update(self, dt):
+        self.t += dt
+        self.state.tick(dt)
+        self.stats.update(dt, self.state.pet.needs)
+        self.bar.update(dt)
+        self.map.update(dt)
+        self.pet.update(dt)
         self.animator.update(dt)
+        self.fx.update(dt)
+        if self.toast_t > 0:
+            self.toast_t -= dt
+        if self.anim_kind:
+            self.anim_t += dt
+            if self.anim_t >= self.anim_dur:
+                self.anim_kind = None
+        # refresh labels ~4x/second (needs and plants change continuously)
+        self._bubble_t += dt
+        if int(self.t * 4) != int((self.t - dt) * 4):
+            self.refresh_items()
+
+    # --------------------------------------------------------------- draw
+    def draw(self, surf):
+        s = self.state
+        p = s.pet
+        loc = p.location
+        surf.blit(backdrops.get(loc), (0, 0))
+        backdrops.draw_ambient(surf, loc, self.t)
+        if loc == "backyard":
+            self._draw_garden(surf)
+        if loc == "home" and p.home_decorated:
+            self._draw_decor(surf)
+        pose = pet_pose(self.anim_kind, min(1.0, self.anim_t / self.anim_dur)) if self.anim_kind else None
+        self.pet.draw(surf, pose)
+        if self.animator.is_active:
+            self.animator.draw(surf, int(self.pet.feet.x), int(self.pet.feet.y - self.pet.height * 0.55))
+        if not self.anim_kind:
+            self._draw_want_bubble(surf)
+        self.fx.draw(surf)
+        self.stats.draw(surf, p.needs, p.coins)
+        self._draw_place_tag(surf)
+        self._draw_message(surf)
+        self.bar.draw(surf, busy=bool(self.anim_kind))
+        if self.map.open:
+            labels = {}
+            for key in world.LOCATIONS:
+                if key == "backyard":
+                    labels[key] = f"{s.mature_plants()}/{len(p.garden)} plants ready"
+                elif key == "arcade":
+                    labels[key] = "Win coins"
+                elif key == "home":
+                    labels[key] = "Rest bonus"
+                elif key == "park":
+                    labels[key] = "Play bonus"
+                elif world.shop_items(key):
+                    labels[key] = "Shop"
+            self.map.draw(surf, loc, labels)
+        elif self.pause:
+            self.pause.draw(surf)
+            hint_bar(surf, [("D-pad", "Choose"), ("A", "OK"), ("B", "Back")])
+
+    def _draw_place_tag(self, surf):
+        info = self.state.get_current_location_info()
+        name = assets.text(info["name"], 24, (255, 255, 255), bold=True)
+        mood, col = MOOD_TEXT[self.state.mood()]
+        m = assets.text(mood, 22, col, bold=True)
+        w = name.get_width() + m.get_width() + 46
+        surf.blit(panel((w, 30), (40, 34, 56, 190), 14, None), (8, 52))
+        surf.blit(name, (20, 58))
+        pygame.draw.circle(surf, col, (28 + name.get_width(), 67), 5)
+        surf.blit(m, (36 + name.get_width(), 59))
+
+    def _draw_message(self, surf):
+        if self.toast_t > 0:
+            col = (255, 200, 190) if self.toast_bad else (255, 255, 230)
+            text = self.toast
+        else:
+            col, text = (215, 210, 230), (self.bar.current.desc if self.bar.current else "")
+        if not text:
+            return
+        t = assets.text(text, 21, col, bold=self.toast_t > 0)
+        if t.get_width() > 620:
+            t = assets.text(text, 17, col, bold=self.toast_t > 0)
+        w = t.get_width() + 24
+        bg = (120, 40, 50, 220) if (self.toast_t > 0 and self.toast_bad) else (40, 34, 56, 210)
+        surf.blit(panel((w, 26), bg, 12, None), ((640 - w) // 2, 362))
+        surf.blit(t, t.get_rect(center=(320, 375)))
+
+    def _draw_want_bubble(self, surf):
+        want = self.state.wants()
+        if not want:
+            return
+        hx, hy = self.pet.feet.x + 58, self.pet.feet.y - self.pet.height - 8
+        bob = int(3 * math.sin(self.t * 3))
+        pygame.draw.circle(surf, (255, 255, 255), (int(hx - 26), int(hy + 30 + bob)), 4)
+        pygame.draw.circle(surf, (255, 255, 255), (int(hx - 16), int(hy + 20 + bob)), 6)
+        pygame.draw.ellipse(surf, (255, 255, 255), (hx - 22, hy - 26 + bob, 48, 40))
+        pygame.draw.ellipse(surf, (200, 190, 200), (hx - 22, hy - 26 + bob, 48, 40), 2)
+        surf.blit(icon(want, 26), (hx - 11, hy - 19 + bob))
+
+    def _draw_garden(self, surf):
+        bed_y = 370
+        for i in range(world.GARDEN_SLOTS):
+            x = 100 + i * 62
+            pygame.draw.ellipse(surf, (70, 44, 26), (x - 14, bed_y - 4, 28, 10))
+        for i, plant in enumerate(self.state.pet.garden[:world.GARDEN_SLOTS]):
+            x = 100 + i * 62
+            stage = plant["stage"]
+            sway = math.sin(self.t * 2 + i) * (2 if stage >= 2 else 0)
+            if stage == 0:
+                pygame.draw.circle(surf, (120, 80, 40), (x, bed_y), 5)
+                pygame.draw.line(surf, (90, 170, 80), (x, bed_y - 2), (x + 3, bed_y - 8), 2)
+            else:
+                h = 12 + stage * 10
+                top = (int(x + sway), bed_y - h)
+                pygame.draw.line(surf, (50, 140, 60), (x, bed_y), top, 3)
+                pygame.draw.ellipse(surf, (80, 180, 80), (x - 12, bed_y - h // 2 - 4, 12, 7))
+                pygame.draw.ellipse(surf, (80, 180, 80), (x, bed_y - h // 2 - 8, 12, 7))
+                if stage == 2:
+                    pygame.draw.circle(surf, (110, 190, 100), top, 6)
+                elif stage >= 3:
+                    big = 1.0 + 0.08 * math.sin(self.t * 4 + i)
+                    if plant["type"] == "sunflower":
+                        for k in range(8):
+                            ang = k * math.tau / 8
+                            pygame.draw.circle(surf, (250, 200, 40), (int(top[0] + math.cos(ang) * 9 * big), int(top[1] + math.sin(ang) * 9 * big)), 5)
+                        pygame.draw.circle(surf, (130, 80, 30), top, 6)
+                    else:
+                        for k in range(5):
+                            ang = k * math.tau / 5
+                            pygame.draw.circle(surf, (250, 110, 160), (int(top[0] + math.cos(ang) * 6 * big), int(top[1] + math.sin(ang) * 6 * big)), 5)
+                        pygame.draw.circle(surf, (255, 220, 90), top, 4)
+                    if int(self.t * 2 + i) % 3 == 0:
+                        pygame.draw.line(surf, (255, 255, 220), (top[0] + 12, top[1] - 10), (top[0] + 12, top[1] - 4), 2)
+                        pygame.draw.line(surf, (255, 255, 220), (top[0] + 9, top[1] - 7), (top[0] + 15, top[1] - 7), 2)
+
+    def _draw_decor(self, surf):
+        pot = assets.image("assets/backgrounds/home/layers/pot.png")
+        if pot is not None:
+            surf.blit(pot, (70, 262))
+        # bunting across the top of the room
+        for i in range(12):
+            x = 40 + i * 48
+            y = 60 + int(10 * math.sin(i / 11 * math.pi))
+            col = [(250, 120, 170), (250, 210, 70), (140, 200, 250)][i % 3]
+            pygame.draw.polygon(surf, col, [(x, y), (x + 30, y), (x + 15, y + 22)])

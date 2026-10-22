@@ -32,6 +32,9 @@ class TitleScene(BaseScene):
         if self.sprites is None:
             self.sprites = [PetSprite(p, height=104) for p in PET_ROSTER]
         has = self.state.has_save
+        self.companion = mode == "companion"
+        if self.companion:
+            mode = "select"
         self.mode = mode or ("menu" if has else "select")
         self.index = self.state.pet.species_id if has else 0
         self.menu = Menu("", [("continue", f"Continue with {self.state.pet.name}"),
@@ -74,6 +77,8 @@ class TitleScene(BaseScene):
             self.confirm_new = False
         elif a in ("A", "START"):
             self._choose()
+        elif a == "B" and self.companion:
+            self.game.switch("main")
         elif a == "B" and self.state.has_save:
             self.mode = "menu"
             self.confirm_new = False
@@ -100,7 +105,7 @@ class TitleScene(BaseScene):
                 self.index = i
 
     def _choose(self):
-        if self.state.has_save and not self.confirm_new:
+        if self.state.has_save and not self.confirm_new and not self.companion:
             self.confirm_new = True   # starting over replaces the old pet: ask twice
             return
         self.confirm_new = False
@@ -110,6 +115,10 @@ class TitleScene(BaseScene):
 
     def _adopt(self, trait):
         entry = PET_ROSTER[self.index]
+        if self.companion:
+            res = self.state.adopt_companion(entry["name"], entry["id"], trait)
+            self.game.switch("main", message=res["msg"] + f" ({TRAITS[trait]['name']})")
+            return
         self.state.new_game(entry["name"], entry["id"], trait)
         self.game.switch("main", message=f"Say hi to {entry['name']}! {entry['name']} is {TRAITS[trait]['name']}.")
 
@@ -156,7 +165,8 @@ class TitleScene(BaseScene):
             surf.blit(d, d.get_rect(center=(320, 410)))
             hint_bar(surf, [("D-pad", "Choose"), ("A", "Adopt"), ("B", "Back")])
             return
-        sub = assets.text("Choose your companion", 28, (110, 70, 50), bold=True)
+        sub = assets.text("Who's joining the family?" if self.companion else "Choose your companion",
+                          28, (110, 70, 50), bold=True)
         surf.blit(sub, sub.get_rect(center=(320, 94)))
         for i, entry in enumerate(PET_ROSTER):
             r = self._cell(i)

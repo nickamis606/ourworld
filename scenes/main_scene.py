@@ -25,6 +25,8 @@ from core import fish_data
 from ui.dialogue_box import DialogueBox
 from ui.journal import Journal
 from ui.settings_menu import SettingsMenu
+from ui.furnish import FurnishMode
+from sprites import furniture as furniture_sprites
 from engine.audio import track_for
 from ui.action_bar import ActionBar, ActionItem
 from ui.common import hint_bar, panel
@@ -89,6 +91,9 @@ class MainScene(BaseScene):
         self.dialog = None
         self.journal = Journal()
         self.settings_menu = None
+        self.furnish = None
+        self.pets_menu = None
+        self._nap_sprites = {}
         self.hide_hud = False
         self._npc_flip = {}
         self._music_t = 0.0
@@ -106,6 +111,8 @@ class MainScene(BaseScene):
         self.journal.gs = self.state
         self.pause = None
         self.dialog = None
+        self.furnish = None
+        self.pets_menu = None
         self.fx.clear()
         self.anim_kind = None
         self.animator.is_active = False
@@ -133,7 +140,8 @@ class MainScene(BaseScene):
 
     @property
     def overlay_open(self):
-        return bool(self.map.open or self.journal.open or self.dialog or self.pause or self.settings_menu)
+        return bool(self.map.open or self.journal.open or self.dialog or self.pause or self.settings_menu
+                    or self.furnish or self.pets_menu)
 
     def sfx(self, name):
         self.game.sfx(name)
@@ -208,6 +216,12 @@ class MainScene(BaseScene):
                                     if not p.home_decorated else
                                     f"Home is decorated ({int(p.decoration_left // 60)} min left)",
                                     n >= world.FLOWERS_TO_DECORATE, f"{n}/5", (200, 90, 150)))
+            owned = sum(s.extras.furniture.values())
+            placed = len(s.extras.layout)
+            items.append(ActionItem("furnish", "Furnish", "furnish",
+                                    f"Arrange your furniture ({owned} to place, {placed} placed)" if owned or placed
+                                    else "No furniture yet - shops and quests give you some!",
+                                    bool(owned or placed), str(owned) if owned else "", (170, 110, 70)))
         elif loc == "backyard":
             for seed, label, ic in (("flower_seeds", "Flower", "plant_flower"),
                                     ("sunflower_seeds", "Sunflwr", "plant_sunflower")):
@@ -280,6 +294,19 @@ class MainScene(BaseScene):
                 self.settings_menu = None
                 self.state.save()
             return
+        if self.furnish:
+            res = self.furnish.handle_action(a)
+            if res is not None:
+                self.sfx("place" if res.get("success") else "sad")
+            else:
+                self.sfx("move" if a in ("UP", "DOWN", "LEFT", "RIGHT", "L", "R") else "back")
+            if not self.furnish.open:
+                self.furnish = None
+                self.refresh_items()
+                self.state.trigger_auto_save()
+            return
+        if self.pets_menu:
+            return self._pets_action(a)
         if self.journal.open:
             self.sfx("move" if a in ("UP", "DOWN", "LEFT", "RIGHT", "L", "R") else "back")
             return self.journal.handle_action(a, self.state.story)
@@ -358,6 +385,8 @@ class MainScene(BaseScene):
     def open_pause(self):
         opts = [("resume", "Resume"), ("journal", "Journal"), ("settings", "Settings"),
                 ("photo", "Take a photo"), ("save", "Save now")]
+        if self.state.story.finished:
+            opts.append(("pets", "Pets..."))
         opts.append(("newpet", "New pet..."))
         opts.append(("quit", "Quit game"))
         self.pause = Menu("Paused", opts)
@@ -381,13 +410,60 @@ class MainScene(BaseScene):
                 path = self.game.take_photo()
                 self.say("Photo saved to photos/!" if path else "Couldn't save the photo", bad=not path)
             elif sel == "pets":
-                self.game.switch("title", mode="pets")
+                self.open_pets()
             elif sel == "save":
                 self.say("Saved!" if self.state.save() else "Save failed!", bad=False)
             elif sel == "newpet":
                 self.game.switch("title", mode="select")
             elif sel == "quit":
                 self.game.quit()
+
+    def open_pets(self):
+        opts = []
+        for idx, name, _sp, active in self.state.all_pets():
+            opts.append((f"pet:{idx}", f"{name} (with you)" if active else f"{name} (napping)"))
+        ok, _why = self.state.can_adopt_companion()
+        if ok:
+            opts.append(("adopt", "Adopt a new friend"))
+        opts.append(("close", "Back"))
+        self.pets_menu = Menu("Your pets", opts, width=340)
+
+    def _pets_action(self, a):
+        m = self.pets_menu
+        if a in ("UP", "DOWN"):
+            m.move(-1 if a == "UP" else 1)
+            self.sfx("move")
+        elif a in ("B", "START"):
+            self.pets_menu = None
+        elif a == "A":
+            sel = m.selected
+            self.pets_menu = None
+            self.sfx("select")
+            if sel == "adopt":
+                self.game.switch("title", mode="companion")
+            elif sel.startswith("pet:"):
+                idx = int(sel[4:])
+                if idx >= 0:
+                    res = self.state.switch_pet(idx)
+                    self._ensure_sprite()
+                    self.pet.set_feet(*FEET.get(self.state.pet.location, DEFAULT_FEET))
+                    self.say(res["msg"])
+                    self.refresh_items()
+                    self._update_music()
+
+    def _draw_napping(self, surf):
+        spots = [(92, 384), (548, 384), (196, 392)]
+        for (name, sp, stage), (x, y) in zip(self.state.napping_pets(), spots):
+            key = (sp, stage)
+            img = self._nap_sprites.get(key)
+            if img is None:
+                h = int(70 * petsmod.stage_scale(stage))
+                base = PetSprite(roster_entry(sp), height=h).base
+                img = self._nap_sprites[key] = pygame.transform.rotate(base, 8)
+            surf.blit(img, img.get_rect(midbottom=(x, y)))
+            if int(self.t * 1.5 + x) % 3 == 0:
+                z = assets.text("z", 18, (120, 120, 200), bold=True)
+                surf.blit(z, (x + img.get_width() // 2 - 8, y - img.get_height() - 6))
 
     # ------------------------------------------------------------ actions
     def activate(self, item_id):
@@ -427,6 +503,10 @@ class MainScene(BaseScene):
         elif item_id == "decorate":
             res = s.decorate_home()
             self._feedback(res, "decorate")
+        elif item_id == "furnish":
+            self.furnish = FurnishMode(self.state)
+            self.sfx("select")
+            return
         elif item_id == "fish":
             ok, why = s.can_fish()
             if not ok:
@@ -486,6 +566,8 @@ class MainScene(BaseScene):
         self.journal.update(dt)
         if self.settings_menu:
             self.settings_menu.update(dt, self.game.input.held)
+        if self.furnish:
+            self.furnish.update(dt)
         if self.dialog:
             self.dialog.update(dt)
         elif self.state.reminder_due() and not self.overlay_open:
@@ -561,6 +643,9 @@ class MainScene(BaseScene):
             self._draw_garden(surf)
         if loc == "home" and p.home_decorated:
             self._draw_decor(surf)
+        if loc == "home":
+            furniture_sprites.draw_layout(surf, s.extras.layout)
+            self._draw_napping(surf)
         pose = pet_pose(self.anim_kind, min(1.0, self.anim_t / self.anim_dur)) if self.anim_kind else None
         if pose is None and p.mopey:
             pose = {"dy": 3.0, "sy": 0.93, "sx": 1.05, "angle": 3 * math.sin(self.t * 0.8)}
@@ -582,6 +667,9 @@ class MainScene(BaseScene):
         self._draw_tracker(surf)
         if self.dialog:
             self.dialog.draw(surf)
+            return
+        if self.furnish:
+            self.furnish.draw(surf)
             return
         self._draw_message(surf)
         self.bar.draw(surf, busy=bool(self.anim_kind))
@@ -614,6 +702,9 @@ class MainScene(BaseScene):
             self.map.draw(surf, loc, labels, locked, markers)
         elif self.settings_menu:
             self.settings_menu.draw(surf)
+        elif self.pets_menu:
+            self.pets_menu.draw(surf)
+            hint_bar(surf, [("D-pad", "Choose"), ("A", "OK"), ("B", "Back")])
         elif self.journal.open:
             self.journal.draw(surf, s)
         elif self.pause:

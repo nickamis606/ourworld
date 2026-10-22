@@ -559,3 +559,230 @@ def test_arcade_picker_shows_weekly_banner(game):
     from minigames import GAME_INFO
     assert wk["game"] in GAME_INFO and wk["target"] > 0
     game.scene.draw(game.screen)
+
+
+# ------------------------------------------------------- home decorating
+def test_furniture_rules(tmp_path):
+    gs = fresh(tmp_path)
+    gs.pet.location = "home"
+    assert not gs.place_furniture(0, 1, "plant")["success"]          # don't own it
+    gs.extras.furniture.update({"plant": 1, "picture": 1})
+    r = gs.place_furniture(0, 0, "plant")
+    assert not r["success"] and "floor" in r["msg"]
+    assert not gs.place_furniture(0, 1, "picture")["success"]       # wall item
+    assert gs.place_furniture(0, 1, "plant")["success"]
+    assert gs.place_furniture(3, 0, "picture")["success"]
+    assert gs.furniture_at(0, 1) == "plant" and "plant" not in gs.extras.furniture
+    gs.extras.furniture["lamp"] = 1
+    assert not gs.place_furniture(0, 1, "lamp")["success"]          # occupied
+    assert not gs.place_furniture(9, 1, "lamp")["success"]          # off grid
+    assert gs.cozy_factor() < 1.0
+    assert gs.decay_multipliers()["happiness"] < 1.0
+    assert gs.remove_furniture(0, 1)["success"] and gs.extras.furniture["plant"] == 1
+    gs.pet.location = "park"
+    assert not gs.place_furniture(0, 1, "plant")["success"]
+
+
+def test_furniture_from_shop_and_quests(tmp_path):
+    from tests import story_script as S
+    gs = fresh(tmp_path)
+    S.chapter1(gs)                      # welcome quest -> family picture
+    assert gs.extras.furniture.get("picture") == 1
+    gs.story.unlocked.add("gens_garden")
+    gs.pet.location = "gens_garden"
+    gs.pet.coins = 100
+    r = gs.buy_item("gens_garden", "plant")
+    assert r["success"] and gs.extras.furniture.get("plant") == 1
+    assert "plant" not in gs.pet.inventory
+
+
+def test_layout_survives_save_and_load(tmp_path):
+    gs = fresh(tmp_path)
+    gs.pet.location = "home"
+    gs.extras.furniture.update({"lamp": 2, "clock": 1})
+    gs.place_furniture(2, 1, "lamp")
+    gs.place_furniture(5, 0, "clock")
+    gs.extras.fish["koi"] = {"count": 1, "best": 30}
+    assert gs.save()
+    g2 = GameState(save_path=gs.save_manager.path)
+    assert sorted(map(tuple, g2.extras.layout)) == [(2, 1, "lamp"), (5, 0, "clock")]
+    assert g2.extras.furniture == {"lamp": 1}
+    assert g2.extras.fish["koi"]["best"] == 30
+
+
+def test_furnish_mode_by_buttons(game):
+    adopt(game)
+    st = game.state
+    st.extras.furniture.update({"plant": 1, "picture": 1})
+    st.pet.location = "home"
+    game.switch("main", fade=False)
+    run(game, 3)
+    game.scene.bar.focus_id("furnish")
+    run(game, 2, key(pygame.K_SPACE))
+    fm = game.scene.furnish
+    assert fm is not None and game.scene.overlay_open
+    assert fm.selected() == "picture"          # FURNITURE order: wall items first
+    fm.col, fm.row = 4, 1
+    run(game, 1, key(pygame.K_t))              # R: next item (plant)
+    assert fm.selected() == "plant"
+    run(game, 1, key(pygame.K_SPACE))          # place
+    assert st.furniture_at(4, 1) == "plant"
+    run(game, 1, key(pygame.K_UP))             # wall row
+    run(game, 1, key(pygame.K_SPACE))          # picture is the only one left
+    assert st.furniture_at(4, 0) == "picture"
+    run(game, 1, key(pygame.K_SPACE))          # pick it back up
+    assert st.furniture_at(4, 0) is None and st.extras.furniture.get("picture") == 1
+    run(game, 2, key(pygame.K_x))              # B: done
+    assert game.scene.furnish is None
+    game.scene.draw(game.screen)
+
+
+# ------------------------------------------------------------- more pets
+def test_companions_after_the_ending(tmp_path):
+    from tests import story_script as S
+    gs = fresh(tmp_path)
+    assert not gs.adopt_companion("Milo", 1)["success"]     # story first
+    S.play_to_end(gs)
+    gs.pet.coins = 77
+    gs.pet.location = "park"
+    first = gs.pet.name
+    xp = gs.pet.bond_xp
+    r = gs.adopt_companion("Milo", 1, "curious")
+    assert r["success"] and gs.pet.name == "Milo" and gs.pet.trait == "curious"
+    assert gs.pet.coins == 77 and gs.pet.location == "home" and gs.pet.bond_xp == 0
+    assert gs.stage == "baby"
+    gs.pet.coins = 90
+    assert gs.switch_pet(0)["success"]
+    assert gs.pet.name == first and gs.pet.bond_xp == xp and gs.pet.coins == 90
+    assert [n for _, n, _, _ in gs.all_pets()] == [first, "Milo"]
+    gs.adopt_companion("Milo", 1)                            # same name -> "Milo 2"
+    gs.adopt_companion("Luna", 2)
+    assert len(gs.all_pets()) == 4
+    assert not gs.adopt_companion("Nova", 5)["success"]      # home is full
+    assert gs.save()
+    g2 = GameState(save_path=gs.save_manager.path)
+    assert [n for _, n, _, _ in g2.all_pets()] == [n for _, n, _, _ in gs.all_pets()]
+    assert len(g2.napping_pets()) == 3
+
+
+def test_pets_menu_adopt_and_switch_by_buttons(game):
+    from tests import story_script as S
+    adopt(game)
+    st = game.state
+    S.play_to_end(st)
+    st.story.dialogue.clear()
+    st.story.ending_pending = False
+    st.story.notices.clear()
+    st.pet.location = "home"
+    game.switch("main", fade=False)
+    run(game, 3)
+    _open_pause_item(game, "pets")
+    m = game.scene.pets_menu
+    assert m is not None
+    m.index = [k for k, _ in m.options].index("adopt")
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 20)
+    assert game.scene_name == "title" and game.scene.companion
+    run(game, 1, key(pygame.K_RIGHT))          # second species
+    run(game, 2, key(pygame.K_SPACE))
+    assert game.scene.mode == "trait"
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 20)
+    assert game.scene_name == "main" and len(st.extras.companions) == 1
+    new_name = st.pet.name
+    run(game, 3)
+    game.scene.draw(game.screen)               # napping pet drawn at home
+    game.scene.open_pets()
+    game.scene.pets_menu.index = 1             # the napping first pet
+    run(game, 2, key(pygame.K_SPACE))
+    assert st.pet.name != new_name
+    assert game.scene.pet.height <= 128
+
+
+# ------------------------------------------------------------ hot-seat
+def test_two_player_hot_seat(game):
+    adopt(game)
+    st = game.state
+    st.story.unlocked.add("arcade")
+    st.pet.needs.energy = 80
+    game.switch("arcade", fade=False)
+    run(game, 3)
+    sc = game.scene
+    run(game, 1, key(pygame.K_LSHIFT))         # X toggles 2 players
+    assert sc.players == 2
+    sc.index = 0
+    run(game, 2, key(pygame.K_SPACE))
+    assert sc.phase == "play" and sc.turn == 0
+    sc.minigame.score = 30
+    sc.minigame.game_over = True
+    run(game, 40)
+    assert sc.phase == "handoff" and sc.scores == [30]
+    energy_mid = st.pet.needs.energy
+    sc.draw(game.screen)
+    run(game, 2, key(pygame.K_SPACE))
+    assert sc.phase == "play" and sc.turn == 1
+    sc.minigame.score = 50
+    sc.minigame.game_over = True
+    coins = st.pet.coins
+    run(game, 40)
+    assert sc.phase == "result" and sc.result["scores"] == [30, 50]
+    assert sc.result["score"] == 50
+    assert st.pet.coins > coins
+    assert st.pet.needs.energy < energy_mid       # charged once, at the end
+    sc.draw(game.screen)
+    run(game, 1, key(pygame.K_LSHIFT))
+    run(game, 2, key(pygame.K_x))
+    assert sc.phase == "pick"
+
+
+# ------------------------------------------------------------ migration
+V1 = {"schema_version": 1, "high_scores": {"snake": 40},
+      "pet": {"name": "Bubbles", "species_id": 0, "coins": 33, "location": "park",
+              "needs": {"hunger": 50, "happiness": 60, "energy": 70, "cleanliness": 80},
+              "home_decorated": True, "garden": [{"type": "flower", "stage": 1, "planted_time": 123.4}]}}
+V2 = {"schema_version": 2, "high_scores": {}, "pet": dict(V1["pet"], bond_xp=0, cooldowns={})}
+
+
+@pytest.mark.parametrize("data", [V1, V2, {"name": "Flat", "coins": 9, "species_id": 2}], ids=["v1", "v2", "v0"])
+def test_old_saves_migrate_to_v4(tmp_path, data):
+    p = tmp_path / "old.json"
+    p.write_text(json.dumps(data))
+    gs = GameState(save_path=str(p))
+    assert gs.has_save
+    from core.pets import TRAITS
+    assert gs.pet.trait in TRAITS and gs.extras.layout == [] and gs.settings.music == 6
+    assert gs.save()
+    out = json.loads(p.read_text())
+    assert out["schema_version"] == 4 and "extras" in out and "settings" in out
+    assert out["pet"]["trait"] == gs.pet.trait
+
+
+def test_v3_save_migrates_and_gets_quest_furniture(tmp_path):
+    from tests import story_script as S
+    gs = fresh(tmp_path)
+    S.chapter1(gs)
+    assert gs.save()
+    data = json.loads(open(gs.save_manager.path).read())
+    data["schema_version"] = 3
+    for k in ("extras", "settings"):
+        data.pop(k)
+    for k in ("trait", "stage_seen", "mopey"):
+        data["pet"].pop(k)
+    open(gs.save_manager.path, "w").write(json.dumps(data))
+    g2 = GameState(save_path=gs.save_manager.path)
+    assert g2.has_save and g2.story.status("welcome") == "done"
+    assert g2.extras.furniture.get("picture") == 1      # given for the finished quest
+    assert g2.pet.trait
+
+
+def test_garbage_extras_never_lose_the_pet(tmp_path):
+    gs = fresh(tmp_path)
+    assert gs.save()
+    data = json.loads(open(gs.save_manager.path).read())
+    data["extras"] = {"layout": [[1, 1, "nope"], "x", [99, 0, "lamp"]], "fish": {"koi": "big"},
+                      "furniture": {"lamp": "two"}, "companions": [1, {"bad": 1}]}
+    data["settings"] = "loud"
+    open(gs.save_manager.path, "w").write(json.dumps(data))
+    g2 = GameState(save_path=gs.save_manager.path)
+    assert g2.has_save and g2.pet.name == "Mochi"
+    assert g2.extras.layout == [] and g2.extras.companions == []

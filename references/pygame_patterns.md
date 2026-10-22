@@ -58,3 +58,12 @@ This pattern was reinforced after multiple regressions of the "map stays in back
 ---
 
 ## 5. Input Handling
+## 6. Input as Actions (2026-10-17)
+Never check `pygame.K_*` in a scene. `engine.input.InputManager.process(event)` turns
+keyboard, controller and joystick events into action strings; the controller calls
+`scene.handle_action(action)`. Add new bindings in `DEFAULT_KEYS` / `input_map.json`.
+
+## 7. No per-frame allocation
+Use `engine.assets.text()` (LRU cached) instead of `font.render` in draw code,
+`engine.assets.image()` instead of `pygame.image.load`, and cache static
+backgrounds/panels once (`sprites.backdrops.get`, `ui.common.panel`).

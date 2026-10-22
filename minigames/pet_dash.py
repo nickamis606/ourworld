@@ -5,8 +5,8 @@ Better visuals + noticeably progressive difficulty.
 """
 
 import pygame
+from minigames.base import MinigameBase
 import random
-from dataclasses import dataclass
 
 SCREEN_WIDTH = 640
 SCREEN_HEIGHT = 480
@@ -26,47 +26,9 @@ OBSTACLE = (101, 67, 33)
 TREAT = (255, 200, 50)
 
 
-@dataclass
-class MinigameResult:
-    score: int
-    completed: bool
-    message: str = ""
-
-
-class MinigameBase:
-    def __init__(self, screen, clock):
-        self.screen = screen
-        self.clock = clock
-        self.running = True
-        self.score = 0
-        self.font = pygame.font.SysFont("arial", 26)
-        self.big_font = pygame.font.SysFont("arial", 48, bold=True)
-        self.small_font = pygame.font.SysFont("arial", 18)
-
-    def handle_key(self, key): pass
-    def update(self, dt): pass
-    def draw(self, screen=None): pass
-
-    def run(self):
-        while self.running:
-            dt = self.clock.tick(FPS) / 1000.0
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                    return MinigameResult(self.score, False, "quit")
-                if event.type == pygame.KEYDOWN:
-                    self.handle_key(event.key)
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    self.handle_key(pygame.K_SPACE)
-            self.update(dt)
-            self.draw()
-            pygame.display.flip()
-        return MinigameResult(self.score, True)
-
-
 class PetDash(MinigameBase):
     def __init__(self, screen, clock, pet_color=None):
-        super().__init__(screen, clock)
+        super().__init__(screen, clock, (34, 62, 23))
         self.pet_color = pet_color or (80, 200, 120)
         self.reset_game()
 
@@ -137,9 +99,10 @@ class PetDash(MinigameBase):
             self.show_instructions = False
 
         # Physics
-        self.pet_vel_y += GRAVITY
-        self.pet_y += self.pet_vel_y
-        self.anim_frame += 0.25
+        k = min(dt, 0.05) * 60.0  # physics constants were tuned per 60 FPS frame
+        self.pet_vel_y += GRAVITY * k
+        self.pet_y += self.pet_vel_y * k
+        self.anim_frame += 0.25 * k
 
         if self.pet_y >= GROUND_Y:
             self.pet_y = GROUND_Y
@@ -154,7 +117,7 @@ class PetDash(MinigameBase):
             self.spawn_treat()
 
         # Move world
-        move_speed = self.speed
+        move_speed = self.speed * k
         for o in self.obstacles:
             o["x"] -= move_speed
         for t in self.treats:
@@ -244,7 +207,7 @@ class PetDash(MinigameBase):
         target.blit(self.font.render(f"SCORE: {self.score}", True, (30, 30, 30)), (18, 12))
 
         if self.show_instructions:
-            inst = self.small_font.render("SPACE / UP = Jump (Double Jump Available!)", True, (40, 40, 40))
+            inst = self.small_font.render("A or Up = Jump (press again to double jump!)", True, (40, 40, 40))
             target.blit(inst, (SCREEN_WIDTH // 2 - inst.get_width() // 2, 65))
 
         if self.game_over:
@@ -255,7 +218,7 @@ class PetDash(MinigameBase):
             target.blit(go, (SCREEN_WIDTH // 2 - go.get_width() // 2, 130))
             fs = self.font.render(f"Final Score: {self.score}", True, (255, 255, 255))
             target.blit(fs, (SCREEN_WIDTH // 2 - fs.get_width() // 2, 195))
-            again = self.font.render("R = Try Again    ESC = Back to Arcade", True, (200, 255, 200))
+            again = self.font.render("Tallying your prize...", True, (200, 255, 200))
             target.blit(again, (SCREEN_WIDTH // 2 - again.get_width() // 2, 260))
 
 

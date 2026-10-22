@@ -6,8 +6,8 @@ OurWorld Arcade - Snake (final clean version)
 """
 
 import pygame
+from minigames.base import MinigameBase
 import random
-from dataclasses import dataclass
 
 GRID_COLS = 32
 GRID_ROWS = 24
@@ -27,45 +27,9 @@ TEXT_COLOR = (240, 245, 250)
 ACCENT = (255, 200, 80)
 
 
-@dataclass
-class MinigameResult:
-    score: int
-    completed: bool
-    message: str = ""
-
-
-class MinigameBase:
-    def __init__(self, screen, clock):
-        self.screen = screen
-        self.clock = clock
-        self.running = True
-        self.score = 0
-        self.font = pygame.font.SysFont("arial", 24)
-        self.big_font = pygame.font.SysFont("arial", 48, bold=True)
-        self.small_font = pygame.font.SysFont("arial", 18)
-
-    def handle_key(self, key): pass
-    def update(self, dt): pass
-    def draw(self, screen=None): pass
-
-    def run(self):
-        while self.running:
-            dt = self.clock.tick(FPS) / 1000.0
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                    return MinigameResult(self.score, False, "quit")
-                if event.type == pygame.KEYDOWN:
-                    self.handle_key(event.key)
-            self.update(dt)
-            self.draw()
-            pygame.display.flip()
-        return MinigameResult(self.score, True)
-
-
 class SnakeGame(MinigameBase):
     def __init__(self, screen, clock):
-        super().__init__(screen, clock)
+        super().__init__(screen, clock, (31, 62, 23))
         self.reset_game()
         self.last_move_time = 0
         self.move_interval = MOVE_INTERVAL_MS
@@ -120,8 +84,9 @@ class SnakeGame(MinigameBase):
         if self.show_instructions and self.instruction_timer > 2800:
             self.show_instructions = False
 
-        now = pygame.time.get_ticks()
-        if now - self.last_move_time < self.move_interval: return
+        self._move_acc = getattr(self, "_move_acc", 0.0) + dt * 1000
+        if self._move_acc < self.move_interval: return
+        self._move_acc = 0.0
 
         self.direction = self.next_direction
         hx, hy = self.snake[0]
@@ -139,16 +104,19 @@ class SnakeGame(MinigameBase):
             if self.score % 5 == 0: self.move_interval = max(70, self.move_interval - 8)
         else:
             self.snake.pop()
-        self.last_move_time = now
 
     def draw(self, screen=None):
         target = screen or self.screen
-        target.fill(BG_COLOR)
-
-        for x in range(0, SCREEN_WIDTH, CELL_SIZE):
-            pygame.draw.line(target, GRID_COLOR, (x, 0), (x, SCREEN_HEIGHT), 1)
-        for y in range(0, SCREEN_HEIGHT, CELL_SIZE):
-            pygame.draw.line(target, GRID_COLOR, (0, y), (SCREEN_WIDTH, y), 1)
+        bg = getattr(SnakeGame, "_bg", None)
+        if bg is None:
+            bg = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            bg.fill(BG_COLOR)
+            for x in range(0, SCREEN_WIDTH, CELL_SIZE):
+                pygame.draw.line(bg, GRID_COLOR, (x, 0), (x, SCREEN_HEIGHT), 1)
+            for y in range(0, SCREEN_HEIGHT, CELL_SIZE):
+                pygame.draw.line(bg, GRID_COLOR, (0, y), (SCREEN_WIDTH, y), 1)
+            SnakeGame._bg = bg
+        target.blit(bg, (0, 0))
 
         for i, (gx, gy) in enumerate(self.snake):
             rect = pygame.Rect(gx*CELL_SIZE, gy*CELL_SIZE, CELL_SIZE, CELL_SIZE)
@@ -164,10 +132,11 @@ class SnakeGame(MinigameBase):
         pygame.draw.ellipse(target, TREAT_COLOR, (tx*CELL_SIZE+2, ty*CELL_SIZE+2, CELL_SIZE-4, CELL_SIZE-4))
 
         target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT_COLOR), (12, 8))
-        target.blit(self.small_font.render("OURWORLD ARCADE • SNAKE", True, ACCENT), (SCREEN_WIDTH - 220, 10))
+        tag = self.small_font.render("SNAKE", True, ACCENT)
+        target.blit(tag, (SCREEN_WIDTH - tag.get_width() - 12, 10))
 
         if self.game_over:
-            over = self.big_font.render("GAME OVER - R to restart, ESC to quit", True, (255, 180, 180))
+            over = self.big_font.render("GAME OVER", True, (255, 180, 180))
             target.blit(over, (SCREEN_WIDTH//2 - over.get_width()//2, 200))
 
 

@@ -1,0 +1,28 @@
+# OurWorld launcher for Knulli / Batocera "pygame" system.
+#
+# Install: copy the whole "ourworld" folder AND this file into
+#   /userdata/roms/pygame/
+# so you have /userdata/roms/pygame/OurWorld.pygame and
+#             /userdata/roms/pygame/ourworld/main_pygame.py
+# Then refresh the game list (Start > Game settings > Update gamelists).
+#
+# The launcher looks for the game folder next to itself (ourworld/), or uses
+# the folder this file lives in if main_pygame.py is right beside it.
+import os
+import runpy
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+GAME = None
+for cand in (os.path.join(HERE, "ourworld"), HERE, "/userdata/roms/pygame/ourworld"):
+    if os.path.isfile(os.path.join(cand, "main_pygame.py")):
+        GAME = cand
+        break
+if GAME is None:
+    raise SystemExit("OurWorld: can't find ourworld/main_pygame.py next to OurWorld.pygame")
+
+os.chdir(GAME)
+if GAME not in sys.path:
+    sys.path.insert(0, GAME)
+sys.argv = [os.path.join(GAME, "main_pygame.py"), "--fullscreen"]
+runpy.run_path(os.path.join(GAME, "main_pygame.py"), run_name="__main__")

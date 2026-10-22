@@ -1,229 +1,157 @@
-"""
-SaveManager — Robust save/load for full OurWorld game state.
+"""SaveManager: atomic JSON save/load with migration. No pygame imports.
 
-Responsibilities:
-- Serialize / deserialize complete game state (PetState + needs + location).
-- Track high scores per minigame (snake, pet_dash, frogger).
-- Atomic writes (temp file + rename) to prevent corruption.
-- Auto-save on important events via callback hooks.
-- Schema versioning field for future migrations.
-- Graceful degradation on corrupt/missing saves (start fresh).
+Save format v4 (v3 + "settings", personality/growth/companions/home layout;
+see CHANGELOG). Older formats:
+Save format v3:
+    {"schema_version": 3, "saved_at": <unix time>, "high_scores": {...}, "pet": {...},
+     "story": {...}}
+v0 (flat pet fields), v1 (nested pet, monotonic timestamps) and v2 (no story)
+still load; saves without a story keep every place they had open (free roam)
+and start the story at chapter 1.
 """
-
 import json
 import os
-import time
 import tempfile
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+import time
+from typing import Dict, Optional
 
-if TYPE_CHECKING:
-    from .game_state import GameState
-
-# Schema version — bump when save format changes incompatibly.
-SAVE_SCHEMA_VERSION = 1
-
-# Minimum interval between auto-saves (seconds) to avoid excessive I/O.
+SAVE_SCHEMA_VERSION = 4
 AUTO_SAVE_COOLDOWN = 3.0
-
-# Save directory (relative to project root, not core/).
-_SAVE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "saves")
-_SAVE_PATH = os.path.join(_SAVE_DIR, "savegame.json")
-_SAVE_TMP = os.path.join(_SAVE_DIR, "savegame.json.tmp")
 
 
 class SaveManager:
-    """Manages saving and loading of game state with high scores."""
-
-    def __init__(self, game_state: "GameState"):
+    def __init__(self, game_state, path: str):
         self.game_state = game_state
-        # Auto-save hook: set this to a callable that triggers an in-game save.
-        # Called with no args; should be non-blocking or safe to call from
-        # the game loop.
-        self.on_save: Optional[Callable] = None
-
-        # High scores tracked here; synced to save file on save().
+        self.path = path
         self.high_scores: Dict[str, int] = {}
+        self._last_save_mono = -1e9
+        self.last_saved_mono: Optional[float] = None   # UI reads this for the "Saved" flash
+        self.last_error: Optional[str] = None
 
-        # Auto-save throttling.
-        self._last_save_time = 0.0
-
-        # Save indicator: (start_monotonic_time, width, height) or None.
-        self._save_indicator: Optional[tuple] = None
-
-    # ------------------------------------------------------------------
-    #  Public API
-    # ------------------------------------------------------------------
-
+    # ---------------------------------------------------------------- load
     def load(self) -> bool:
-        """Load game state from disk. Returns True if a valid save was found."""
-        if not os.path.exists(_SAVE_PATH):
+        if not os.path.exists(self.path):
             return False
-
         try:
-            with open(_SAVE_PATH, "r") as f:
+            with open(self.path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            print(f"[SaveManager] Corrupt save file, starting fresh: {e}")
+            if not isinstance(data, dict):
+                raise ValueError("save root is not an object")
+        except (OSError, ValueError) as e:
+            self._quarantine(f"unreadable: {e}")
             return False
 
-        # Schema version check (future-proofing).
-        file_version = data.get("schema_version", 0)
-        if file_version > SAVE_SCHEMA_VERSION:
-            print(f"[SaveManager] Save format v{file_version} newer than expected v{SAVE_SCHEMA_VERSION}, starting fresh.")
+        version = data.get("schema_version", 0)
+        if not isinstance(version, int) or version > SAVE_SCHEMA_VERSION:
+            # Do not overwrite a save from a newer build.
+            self.last_error = f"save is v{version}, this build reads up to v{SAVE_SCHEMA_VERSION}"
+            print(f"[SaveManager] {self.last_error}; starting fresh in memory")
+            self.path = self.path + ".from-newer-build"
             return False
 
+        from .pet_state import PetState
         try:
-            # Schema v0 (pre-SaveManager): flat PetState fields at top level.
-            if "pet" not in data and "name" in data:
-                # Legacy format — restore fields directly.
-                from .pet_state import PetState, Needs
-                legacy = data
-                needs = Needs(**legacy.get("needs", {}))
-                self.game_state.pet = PetState(
-                    name=legacy.get("name", "Pixel"),
-                    creature_type=legacy.get("creature_type", "fluff"),
-                    needs=needs,
-                    location=legacy.get("location", "home"),
-                    days_alive=legacy.get("days_alive", 0),
-                    coins=legacy.get("coins", 1000),
-                    inventory=legacy.get("inventory", {}),
-                    garden=legacy.get("garden", []),
-                    home_decorated=legacy.get("home_decorated", False),
-                    home_decoration_time=legacy.get("home_decoration_time", 0.0),
-                )
-                self._last_save_time = time.monotonic()
-
-                # Also try to restore high scores from legacy format (optional).
-                self.high_scores = {
-                    k: int(v) for k, v in data.get("high_scores", {}).items()
-                }
-                return True
-
-            # Schema v1+: nested "pet" object.
-            pet_data = data.get("pet")
-            if not pet_data:
-                print("[SaveManager] Save file missing 'pet' data.")
-                return False
-
-            from .pet_state import PetState
-            restored_pet = PetState.from_dict(pet_data)
-            self.game_state.pet = restored_pet
-
-            # Restore high scores if present.
-            hs = data.get("high_scores", {})
-            self.high_scores = {k: int(v) for k, v in hs.items()}
-
-            # Restore last-saved timestamp.
-            self._last_save_time = data.get("last_save_time", time.monotonic())
-
-            return True
-        except Exception as e:
-            print(f"[SaveManager] Error during load: {e}")
-            return False
-
-    def save(self) -> bool:
-        """Save game state + high scores to disk (atomic). Returns True on success."""
-        now = time.monotonic()
-        # Throttle auto-saves.
-        if now - self._last_save_time < AUTO_SAVE_COOLDOWN:
-            # Still update the timestamp so future saves are throttled correctly.
-            self._last_save_time = now
-            return False  # skipped, not an error.
-
-        try:
-            os.makedirs(_SAVE_DIR, exist_ok=True)
-
-            payload = {
-                "schema_version": SAVE_SCHEMA_VERSION,
-                "last_save_time": now,
-                "high_scores": {k: int(v) for k, v in self.high_scores.items()},
-                "pet": self.game_state.pet.to_dict(),
-            }
-
-            # Atomic write: write to .tmp, then rename.
-            with tempfile.NamedTemporaryFile(
-                mode="w", dir=_SAVE_DIR, suffix=".tmp", delete=False
-            ) as tmp:
-                json.dump(payload, tmp, indent=2)
-                tmp_path = tmp.name
-
-            os.replace(tmp_path, _SAVE_PATH)
-
-            self._last_save_time = now
-            self._save_indicator = (now, 550, 440)  # bottom-right corner
-
-            # Notify caller hook (if set) — e.g. play a subtle sound.
-            if self.on_save:
+            pet_data = data if "pet" not in data else data["pet"]
+            if not isinstance(pet_data, dict) or "name" not in pet_data:
+                raise ValueError("missing pet data")
+            self.game_state.pet = PetState.from_dict(pet_data)
+            hs = data.get("high_scores") or {}
+            self.high_scores = {str(k): int(v) for k, v in hs.items()
+                                if isinstance(v, (int, float))}
+            from .settings import Settings
+            self.game_state.settings = Settings.from_dict(data.get("settings"))
+            from .story import StoryState
+            if isinstance(data.get("story"), dict):
                 try:
-                    self.on_save()
-                except Exception:
-                    pass
-
-            return True
-        except Exception as e:
-            # Clean up tmp file on failure.
-            try:
-                os.unlink(_SAVE_PATH + ".tmp")
-            except OSError:
-                pass
-            print(f"[SaveManager] Save failed: {e}")
+                    self.game_state.story = StoryState.from_dict(data["story"])
+                except Exception as e:  # noqa: BLE001 - never lose a pet over story data
+                    print(f"[SaveManager] story data unreadable ({e}); keeping places open")
+                    self.game_state.story = StoryState.for_existing_save(self.game_state.pet.location)
+            else:
+                self.game_state.story = StoryState.for_existing_save(self.game_state.pet.location)
+            hook = getattr(self.game_state, "extra_load", None)
+            if hook:
+                hook(data, version)
+        except Exception as e:  # noqa: BLE001 - any bad field means bad save
+            self._quarantine(f"invalid: {e}")
             return False
+
+        saved_at = data.get("saved_at")
+        if isinstance(saved_at, (int, float)):
+            away = time.time() - saved_at
+            if 0 < away < 10 * 365 * 24 * 3600:
+                self.game_state.apply_offline(away)
+        return True
+
+    def _quarantine(self, why: str) -> None:
+        """Keep a broken save aside instead of silently overwriting it."""
+        self.last_error = why
+        bad = self.path + ".corrupt"
+        try:
+            os.replace(self.path, bad)
+            print(f"[SaveManager] Save {why}; moved to {bad}, starting fresh")
+        except OSError:
+            print(f"[SaveManager] Save {why}; starting fresh")
+
+    # ---------------------------------------------------------------- save
+    def save(self, force: bool = False) -> bool:
+        now = time.monotonic()
+        if not force and now - self._last_save_mono < AUTO_SAVE_COOLDOWN:
+            return False  # throttled; do NOT move the timestamp
+        payload = {
+            "schema_version": SAVE_SCHEMA_VERSION,
+            "saved_at": time.time(),
+            "high_scores": {k: int(v) for k, v in self.high_scores.items()},
+            "pet": self.game_state.pet.to_dict(),
+            "story": self.game_state.story.to_dict(),
+            "settings": self.game_state.settings.to_dict(),
+        }
+        extra = getattr(self.game_state, "extra_save", None)
+        if extra:
+            payload.update(extra())
+        directory = os.path.dirname(self.path) or "."
+        tmp_path = None
+        try:
+            os.makedirs(directory, exist_ok=True)
+            with tempfile.NamedTemporaryFile("w", dir=directory, suffix=".tmp",
+                                             delete=False, encoding="utf-8") as tmp:
+                json.dump(payload, tmp, indent=1)
+                tmp.flush()
+                os.fsync(tmp.fileno())  # SD cards + sudden power-off
+                tmp_path = tmp.name
+            os.replace(tmp_path, self.path)
+        except OSError as e:
+            self.last_error = str(e)
+            print(f"[SaveManager] Save failed: {e}")
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+            return False
+        self._last_save_mono = now
+        self.last_saved_mono = now
+        return True
 
     def trigger_auto_save(self) -> bool:
-        """Call this from game-loop-adjacent code to auto-save if cooldown permits.
-        Returns True if a save was actually written, False if throttled."""
-        return self.save()
+        return self.save(force=False)
 
-    # ------------------------------------------------------------------
-    #  High scores
-    # ------------------------------------------------------------------
+    def delete(self) -> None:
+        try:
+            os.remove(self.path)
+        except OSError:
+            pass
 
+    # --------------------------------------------------------- high scores
     def update_high_score(self, minigame: str, score: int) -> bool:
-        """Record a new high score for *minigame*. Returns True if the score improved the record."""
         key = minigame.lower()
-        current = self.high_scores.get(key, 0)
-        if score > current:
-            self.high_scores[key] = score
+        if score > self.high_scores.get(key, 0):
+            self.high_scores[key] = int(score)
             return True
         return False
 
     def get_high_score(self, minigame: str) -> int:
-        """Return the high score for *minigame* (0 if none)."""
         return self.high_scores.get(minigame.lower(), 0)
 
     def get_high_scores(self) -> Dict[str, int]:
-        """Return a copy of all high scores."""
         return dict(self.high_scores)
-
-    # ------------------------------------------------------------------
-    #  Convenience
-    # ------------------------------------------------------------------
-
-    def last_save_time(self) -> float:
-        """Return the monotonic time of the last successful save."""
-        return self._last_save_time
-
-    def time_since_save(self) -> float:
-        """Return seconds since last save (0 if never saved)."""
-        return time.monotonic() - self._last_save_time
-
-    # ------------------------------------------------------------------
-    #  Save indicator
-    # ------------------------------------------------------------------
-
-    def get_save_indicator(self, surface: "pygame.Surface") -> Optional[tuple]:
-        """Return (alpha, x, y) for a save-flash indicator, or None if expired.
-
-        alpha fades from 200 → 0 over 1.5 seconds.
-        Returns the tuple to the caller for rendering.
-        """
-        if self._save_indicator is None:
-            return None
-        start, x, y = self._save_indicator
-        elapsed = time.monotonic() - start
-        if elapsed >= 1.5:
-            self._save_indicator = None
-            return None
-        # Fade: 200 alpha at 0s → 0 at 1.5s
-        alpha = max(0, int(200 * (1 - elapsed / 1.5)))
-        return (alpha, x, y)

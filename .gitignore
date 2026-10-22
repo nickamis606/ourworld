@@ -13,3 +13,9 @@ savegame.json
 .idea/
 .DS_Store
 Thumbs.db
+# Local runtime files
+saves/
+*.tmp
+.pytest_cache/
+input_map.json
+photos/

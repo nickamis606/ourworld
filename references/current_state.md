@@ -1,79 +1,204 @@
-# current_state.md — OurWorld Project Status
+# current_state.md - OurWorld
+
+_Last updated 2026-10-17, round 4 (branch `improve/2026-10-17`, based on `refactor-pygame-standards`)._
 
 ## Status
-Throwaway project — procedural fallback for pet sprites not existing.
+Playable end-to-end on keyboard or gamepad at 640x480, now with a story: adopt ->
+intro -> five chapters of townsfolk quests that open the 3x4 map step by step ->
+light the Wish Lantern -> ending -> Daily Wishes post-game. Care, garden, shops,
+pond/library/spa actions, Willow Woods exploring and six arcade games all feed
+quests. Autosave + resume. 127 tests pass headless.
 
-## Latest Changes
+Round 4 added: chiptune music + SFX (generated), Settings with a parent gate
+(reminder, slow needs), photo mode, Quit + Knulli launcher, growth stages,
+personalities, gentle "mopey" stakes, seasons + 4 calendar events, fishing + Fish
+Book, Weekly Challenge, 2-player hot-seat, home decorating, and companion pets after
+the ending.
 
-2026-08-18:
-- **Care action animation polish** (`core/action_animator.py`, `ui/action_buttons.py`) — see details below.
+## Story outline - "The Lights of Willowby"
+Premise: Willowby glowed every autumn at the Festival of Lights when the Wish Lantern
+on Lantern Hill was lit. The lantern went dark and the town got sleepy and gray. You
+and your pet move in. Mayor Maple: the lantern runs on friendship. Help six friends,
+get six Sparks, light the lantern.
 
-### Care Action Animation Polish (2026-08-18)
+| Ch | Title | Quests (giver: steps) | Opens |
+|---|---|---|---|
+| 1 | A Sleepy Town | Hello, Willowby! (auto; Mayor: feed, play, walk to Town Square) -> Laughter in the Park (Mayor: play at Park x2, nap at Home) | Sweetie's, Gen's Garden |
+| 2 | Sweet and Green | A Sweet Hello (Sweetie: buy 2 treats, feed) - Sweet Spark; Green Thumbs (Gen gives 2 seeds: plant 2, harvest 2) - Bloom Spark | Arcade, Sunny Pond |
+| 3 | Fun and Splash | Insert Coin (Pete: play 2 games, score 40+) - Joy Spark; Splash Day (Quack: swim x2, play on the beach) - Splash Spark | Library, Spa, Willow Woods |
+| 4 | Quiet and Cozy | The Lost Storybook (Olive: find it exploring the Woods, read x2) - Wisdom Spark; Bubble Trouble (Coco gives 18 coins: pamper, bath) - Calm Spark; side: Sticker Scout (Fern: explore x3, own 8 stickers) | Lantern Hill |
+| 5 | Festival of Lights | Light the Wish Lantern (Mayor: Bond Lv 4, climb Lantern Hill, Light) -> ending; side: Dress Up Your Home (decorate) | - |
 
-1. **Per-action durations** — Feed 1.3s, Play 1.1s, Clean 1.4s, Rest 1.6s, Plant 1.5s. Each has personality-appropriate timing.
-2. **Cubic ease-out** — All animations use `1 - (1-p)³` for natural fast-start/slow-landing motion.
-3. **Fade-out tail** — 200ms graceful fade after linger phase instead of abrupt stop.
-4. **Linger phase** — Each action holds at peak (0.12–0.2s) so the viewer registers the completed animation.
-5. **Button pulse** — Brief bright flash (300ms triangular envelope) on the just-pressed button, via `Animator.get_pulse()` → `ActionButtons.draw()`.
-6. **Feed improvements** — Heart now appears at 20% (not 60%), with heartbeat bounce pulse and glow effect. Bowl has pop-in scale.
-7. **Play improvements** — Dynamic squash/stretch proportional to velocity, motion lines scale with ball height, expanding impact ring on ground.
-8. **Clean improvements** — 8 bubbles (up from 6) with sparkle highlights, grow-then-pop lifecycle, brighter rim.
-9. **Rest improvements** — Font surface cache (no per-frame SysFont), size fade (grow→full→shrink), sine wobble, color fade.
-10. **Pet position fix** — Switched from `pet_sprite.pos` to `pet_sprite.rect.center` in MainScene for consistency.
+Post-game: Town Square in festival dress, 3 Daily Wishes per day, sticker hunting,
+high scores. Daily Wishes also start at chapter 3 so there's always something small to do.
 
-## Latest Changes
+Typical first run: ~25-40 minutes (garden growth ~2-3 min is the longest wait).
 
-2026-08-17:
-- **Frogger visual + feedback + level-flow polish** (`minigames/frogger.py`) — see details below.
-- Bugfix in sprites/pet_sprite.py: fixed `_center_content()` which failed with `'pygame.surface.Surface' object has no attribute 'tobytes'`. The Surface object has no `.tobytes()` method; replaced with `pygame.image.tobytes(surface, "RGBA")` which is the correct API for extracting pixel data from a pygame Surface.
-- Bugfix in sprites/location_background.py: `self.assets_path` used a relative path (`assets/backgrounds`) resolved against the runtime CWD, not the module directory — causing `os.path.exists(base_path)` to fail and the code to fall back to the procedural solid fill. Fixed by resolving `assets_path` relative to `__file__`. Also fixed `draw()` where the blit call for `base_surface` was inside an `elif self.use_asset:` branch (never reached when `base_surface` was set). Added debug prints for load/draw and included `decorations` in the draw order.
-- Visual polish (Phase 2): Included `decorations.png` and `pot.png` for the home location only (Option A). They are now loaded via conditional logic in the layer loop — `location == "home"` allows them through, all other locations skip them. Positioned at `(200, 180)` for decorations, `(500, 320)` for pot. Draw order updated to `[rug, table, shelf, window, pot, decorations]`. Removed debug print statements from the now-solid load/draw paths. Layer positions are still hard-coded in `_get_home_position()`.
+### Story systems (where things live)
+- `core/story_data.py` - NPCS, CHAPTERS, QUESTS, SPARKS, STICKERS, BOND_*, DAILY_*, DIALOGUE.
+  Add a quest = one QUESTS entry + `<id>_offer/_busy/_done` dialogue. Steps are
+  `{"event": "kind:key", "at": place, "min_score": n, "count": n}` or `{"cond": "bond"|"stickers"|"sparks"}`.
+  Event kinds: care, place, buy, plant, harvest, decorate, travel, game.
+- `core/story.py` - StoryState (statuses locked -> available -> active -> ready -> done),
+  `on_event`, `talk`, `turn_in`, chapter advance + unlocks, dialogue queue, notices, daily wishes, to/from dict.
+- `core/game_state.py` - emits events, bond XP, `talk()`, `next_dialogue()`, `is_unlocked()`,
+  explore finds, lantern gating, `today()` / `time_of_day()` (clock injectable).
+- UI: `ui/dialogue_box.py` (typewriter, A/B), `ui/journal.py`, `sprites/npc_sprite.py`,
+  quest tracker + NPC markers in `scenes/main_scene.py`, `scenes/ending_scene.py`,
+  locked cards in `ui/map_overlay.py`, tinted/variant backdrops in `sprites/backdrops.py`.
 
-### Frogger improvements (2026-08-17)
+### Places
+| Map | Place | Special | Care bonus / decay |
+|---|---|---|---|
+| (0,0) | Home | Decorate (5 flowers) | Rest bonus |
+| (1,0) | Backyard | Plant / Harvest | Clean bonus |
+| (2,0) | Park | - | Play bonus |
+| (0,1) | Sweetie's | Candy shop | - |
+| (1,1) | Gen's Garden | Seed shop | - |
+| (2,1) | Arcade | Games tile -> picker | energy decays 1.3x |
+| (0,2) | Sunny Pond | Swim | Play bonus; clean decays 1.4x |
+| (1,2) | Bookworm Library | Read (30 s cooldown) | Rest bonus; energy decays 0.7x |
+| (2,2) | Paws & Claws Spa | Pamper (18 coins) | Clean bonus |
+| (0,3) | Willow Woods | Explore (stickers/coins, 20 s cooldown) | Fern |
+| (1,3) | Town Square | Mayor Maple; changes look as the town wakes | - |
+| (2,3) | Lantern Hill | Light the Wish Lantern (6 Sparks, Bond 4) | - |
 
-1. **Death feedback** — Added `death_timer` (700 ms) and `death_type` (car vs water). Frog flashes white during the timer. A colored splash ring (red for car, blue for water) expands outward. Death no longer sets `running=False` immediately — the game continues so the game-over screen is drawn.
-2. **Home-fill feedback** — Each filled home pulses from its normal gold to white at 100 ms intervals for 600 ms, plus a golden outer glow ring. Frog gets a brief 300 ms flash before resetting to the bottom.
-3. **Level indicator** — Moved from small top-left text to a large centered `LEVEL N` banner at the top of the screen. Lives now render as heart symbols (`♥♥♥`).
-4. **Level-advance moment** — When all 5 homes are filled, a 1800 ms pause occurs with a semi-transparent dark overlay and a "LEVEL N COMPLETE!" banner. Homes glow during the pause. After the pause the level counter increments and the next level starts.
-5. **Restart path** — Game-over no longer exits the minigame loop (`running` stays `True`). The game-over screen shows "GAME OVER" with "R = Try Again / ESC = Quit". Input is blocked during death-flash and level-transition to prevent accidental moves.
-6. **Bug fix** — The original code incremented `self.level` inside `_try_fill_home` before the transition timer, then incremented it again when the timer fired. Now `self.level` is only incremented inside the timer handler, matching the displayed level number.
+Adding a place: entry in `core/world.LOCATIONS` with a free `map` cell (+ optional
+`PLACE_ACTIONS` entry, `LOCATION_BONUS`), a builder in `sprites/backdrops.BUILDERS`,
+optional ambient branch, a `FEET` entry in `scenes/main_scene.py`, an icon if new.
 
-**Frogger bug fix (2026-08-18):**
-- **Issue:** Losing a life (or completing a level) could return the player to the Arcade instead of continuing the run. The `_try_fill_home()` method sets `self.won = True` when all 5 homes are filled. This flag is never cleared during the level transition. `ArcadeScene.update()` checks `getattr(self.minigame, 'won', False)` and calls `_handle_minigame_end()`, which clears the minigame and returns to the Arcade — even though the player still had lives and the level transition timer was still active.
-- **Fix:** Clear `self.won = False` in `_tick_feedback()` when the level transition timer fires (same place where `self.level` is incremented and the level is reset). This ensures `won` only reflects the *current* game's state, not a lingering flag from the previous completed game.
-- **Death flow after fix:**
-  1. Collision → `_lose_life()` decrements lives, sets `death_timer = 700ms`, splash + flash drawn
-  2. If lives > 0: after 700ms timer expires, gameplay resumes, frog respawns at bottom
-  3. If lives == 0: `game_over = True`, game continues drawing the Game Over screen
-  4. In ArcadeScene: 1800ms delay after game_over lets player see the screen and press 'R' to retry or ESC to quit
+### Arcade
+Snake, Pet Dash, Frogger, Brick Bop, Pet Pairs, Mole Pop. All subclass
+`minigames.base.MinigameBase`; register in `minigames/__init__.py` (`REGISTERED_GAMES`,
+`GAME_INFO`) and add a rule in `core/rewards._RULES`. X in the picker toggles
+2-player hot-seat. The Weekly Challenge (`core/weekly.py`) rotates through
+`WEEKLY_GAMES` by ISO week. Fishing (`minigames/fishing.py`) runs inside
+ArcadeScene (`switch("arcade", game="fishing")`) but is not in the picker; results go
+to `GameState.finish_fishing`.
 
-**Open Frogger polish (2026-08-18):**
-- Sound effects for death, home fill, and level complete (would require an assets directory for Frogger).
-- Home-fill could show a small frog-silhouette icon in the filled home slot (currently just the glowing ellipse).
-- Score popup animation when filling a home (+100 + level×20).
-- "Press any key to start" overlay for level transitions instead of auto-advance (gives player a moment to prepare).
+### Round-4 systems (where things live)
+| Feature | Core (no pygame) | UI |
+|---|---|---|
+| Music/SFX | - | `engine/audio.py` (`track_for`, `Audio`), WAVs from `tools/make_audio.py` |
+| Settings + parent gate | `core/settings.py`, `GameState.reminder_due/ack_reminder` | `ui/settings_menu.py` (hold A 2 s) |
+| Photos | - | `Game.take_photo` (Pause item, or hold L+R) |
+| Growth, traits, mopey | `core/pets.py`, `GameState.stage/_liked/_check_mopey` | `sprites/pet_extras.py`, title trait menu |
+| Seasons + events | `core/calendar.py`, `FeaturesMixin._event_progress` | `sprites/seasons.py`, Journal entry |
+| Fishing | `core/fish_data.py`, `finish_fishing` | `minigames/fishing.py`, Journal Fish tab |
+| Weekly + hot-seat | `core/weekly.py`, `_weekly_score` | `scenes/arcade_scene.py` |
+| Furniture | `core/furniture.py`, `place/remove_furniture` | `ui/furnish.py`, `sprites/furniture.py` |
+| Companions | `adopt_companion/switch_pet/napping_pets` | Pause > Pets..., title `mode="companion"` |
 
-**Save/Load System (2026-08-18):**
+Round-4 state that isn't the pet lives in `core/extras.WorldExtras` (save key `extras`).
+`GameState` mixes in `core/features.FeaturesMixin`. Shared between pets: coins, inventory,
+garden, home decoration timer, location, cooldowns, furniture. Per pet: name, species,
+needs, bond, trait, growth.
 
-Step 5–8 completed: auto-save triggers wired, high-score sync, save indicator, and comprehensive unit testing (9 tests: PetState round-trip, SaveManager save/load, v0 migration, high scores, cooldown, save indicator timing, corrupt/missing file). All pass.
+## Run / test
+```bash
+python main_pygame.py               # windowed
+python main_pygame.py --fullscreen  # handheld
+pip install pygame pytest && python -m pytest -q
+SDL_VIDEODRIVER=dummy python -m pytest -q   # headless (CI / no display)
+```
+Save file: `saves/savegame.json` (override with `OURWORLD_SAVE=/path`).
+Other env: `OURWORLD_NOSOUND=1`, `OURWORLD_PHOTOS=/dir`, `OURWORLD_HOUR=0..23`,
+`OURWORLD_DATE=YYYY-MM-DD` (seasons/events). Regenerate audio: `python tools/make_audio.py`.
 
-**Save/Load test results:**
-- PetState `to_dict()`/`from_dict()` round-trip verified for all fields
-- SaveManager save/load cycle with high scores verified
-- v0 legacy format migration with high_scores restored
-- Auto-save cooldown (3s) correctly throttles rapid saves
-- Save indicator timing (200→0 alpha over 1.5s) verified
-- Corrupt save file → starts fresh
-- Missing save file → starts fresh
+Knulli/Batocera: copy the `ourworld` folder to `/userdata/roms/pygame/ourworld/` and
+`tools/knulli/OurWorld.pygame` to `/userdata/roms/pygame/`, then update gamelists.
 
-**Frogger visual + feel polish (2026-08-18)**
+## Architecture
+```
+main_pygame.py        Game: one loop/Clock/dt, scene switching + fades, idle FPS, save on exit
+core/ (NO pygame)     needs.py, pet_state.py, game_state.py (all rules), world.py (places,
+                      shop stock, plants), rewards.py, roster.py, savegame.py (v4, migrations),
+                      story.py/story_data.py, settings.py, pets.py, calendar.py, fish_data.py,
+                      weekly.py, furniture.py, extras.py, features.py (round-4 rules mixin)
+engine/               input.py (keys+pads -> actions), assets.py (font/text/image caches),
+                      audio.py (music + SFX, no-op without a mixer)
+scenes/               base_scene, title_scene, main_scene, travel_scene, arcade_scene
+ui/                   stats_bar, action_bar, map_overlay, menu, icons, common
+sprites/              pet_sprite (poses, cached transforms), backdrops (cached per place +
+                      ambient), fx (float text, particles, pet_pose), action_animator (props)
+minigames/            base (MinigameBase), snake, pet_dash, frogger, brick_bop, pet_pairs,
+                      mole_pop + registry/adapter (create, press)
+tools/shrink_assets.py  asset diet;  tools/make_audio.py  audio synth;  tools/knulli/  launcher
+tests/                test_core.py (rules, saves), test_smoke.py (headless scene runs),
+                      test_story.py, test_round4.py
+```
+Rules: scenes call `GameState` methods and render the returned dicts (`success`, `msg`,
+`deltas`...). Scenes never edit needs directly. Scenes consume actions
+(`UP/DOWN/LEFT/RIGHT/A/B/X/Y/L/R/START/SELECT`, plus keyboard-only `HOT_*`) via
+`handle_action`; raw events are only used for mouse.
 
-**Death → respawn flow (4 changes):**
-1. **White screen flash (120 ms)** — `_lose_life()` now sets `self.flash_timer = 120`. During draw, a white alpha surface is blitted over the entire screen, fading out linearly over 120 ms. Gives a sharp "hit" moment.
-2. **Expanded splash rings** — Increased from 3 to 6 rings, larger per-ring radius (`ring * 10 + 4`), thicker stroke (3 px). Rings now clearly radiate outward and persist for the full 700 ms death timer.
-3. **Frog fade-in on respawn** — During the last 300 ms of the death timer (`death_timer < FROG_RESET_MS`), the frog is drawn with a per-pixel alpha that grows from ~0 to 200 over the period, using a per-frame surface. No longer snaps into existence.
-4. **Heart flash on life loss** — `_lose_life()` sets `self.heart_flash = 500`. The LIVES line pulses between red and white for 500 ms, making the lost life unmistakable.
+## Controls
+| Action | Pad | Keyboard |
+|---|---|---|
+| Move focus / cursor | D-pad | Arrows / WASD |
+| Confirm / jump | A | Space / Z |
+| Back / close | B | Esc / X / Backspace |
+| Map | Select (or Up) | M / Tab |
+| Pause | Start | Enter |
+| Journal | X | Shift / I |
+| Talk to townsfolk here | Y | Alt / Y |
+| Care shortcuts | - | F / P / C / R |
+| Take a photo | hold L + R | hold E + T |
+| 1P / 2P (arcade picker) | X | Shift / I |
+| Furnish: choose item | L / R | E / T |
 
-**Level-complete flow (2 changes):**
-5. **Golden screen flash (600 ms)** — When the last home is filled, `self.golden_flash = 600` is set. A golden-tinted (255, 240, 140) screen flash pulses with a fast blink during the flash period, giving a "victory" feel.
-6. **Breathing banner + text scale pulse** — The level-transition banner now uses a sine-based breathing pulse that peaks at the midpoint of the 1800 ms transition (not just a simple fade-in). The "LEVEL N COMPLETE!" text subtly scales up and down with the same pulse via `pygame.transform.scale_by`, making the moment feel alive rather than static.
+Miyoo Mini (Onion/MiniUI) buttons arrive as keyboard events and match the defaults.
+Anbernic/other: SDL game controller mapping is used if available, else raw joystick
+indices (A=0, B=1, X=2, Y=3, L=4, R=5, Select=6, Start=7). If A/B are swapped on a
+device, drop `{"swap_ab": true}` into `input_map.json` next to `main_pygame.py`.
+
+## Performance (desktop, headless, for relative comparison)
+- Round 4: main scene with seasonal tint + particles 0.45-0.55 ms/frame, fishing 0.16,
+  furnish overlay 0.46. Audio on disk ~1 MB (WAV; music streams, SFX load on first use).
+- Boot to title: ~0.04 s (was ~0.8 s for pet select alone, dominated by a Python pixel loop).
+- Main scene: 0.7-1.0 ms/frame at every location; Frogger ~2.8 ms/frame.
+- Brick Bop ~0.23 ms/frame, Pet Pairs ~0.45, Mole Pop ~0.12 (update+draw, desktop).
+- 12 cached day backdrops (+2 story variants) = ~17 MB of surfaces, built lazily on first
+  visit; tinted evening/night copies are an LRU of 3 (~3.7 MB).
+- Story UI: town square + NPC + tracker 0.5 ms/frame, typing dialogue 0.4, journal 1.3,
+  map 1.6 (desktop, headless). RSS ~62 MB.
+- Process RSS ~50 MB; Python heap ~3.5 MB. Assets on disk 0.6 MB (was 6.2 MB).
+
+## Known issues / next priorities
+1. **Test on real hardware.** Verify button mapping on Miyoo Mini + one Anbernic, and
+   frame time (Frogger is the heaviest scene: per-frame alpha surfaces during flashes).
+2. Sound is generated 8-bit WAV. Check the volume balance and the mixer latency on the
+   device (it opens at 22050 Hz mono, 512-sample buffer). OGG would be ~4x smaller if
+   space matters.
+3. Old minigames (Snake/Pet Dash/Frogger) now share MinigameBase but still draw their
+   own in-game "game over" overlays; the arcade results card is the real one.
+4. Home is the only painted place; the other eight are procedural. Drop art into
+   `assets/backgrounds/<place>/base.png` and add a branch in `sprites/backdrops.py`.
+5. `decorations.png` is a sprite sheet that was drawn whole; it is unused now. Slice it.
+6. Growth is 3 stages driven by bond; there are no new sprites per stage (size +
+   code-drawn accessory). Painted stage art would help.
+7. Old docs under references/ (pygame_patterns.md) describe the pre-2026-10 scene API.
+8. New-game coin rates were tuned with bots, not people: watch Brick Bop (score/15)
+   and Mole Pop (score/8) payouts in real play.
+9. The pause menu in minigames is on Start/B; Pet Pairs and Mole Pop only use A, so
+   B-to-pause is fine, but a future game that needs B will have to change that.
+10. Story pacing is untested with kids: watch for the garden wait in chapter 2 and the
+    Bond Lv 4 gate in chapter 5 (most runs hit it naturally by chapter 3-4).
+11. Dialogue is English-only and hard-wrapped by pixel width; long names (>12 chars)
+    may wrap more. No voice/sound.
+12. Old saves get "free roam" (all old places open) and still see the intro; the story
+    still opens Willow Woods and Lantern Hill in order.
+13. Daily Wishes use the device clock; a handheld with no RTC (clock resets on boot)
+    will reroll wishes per boot date. Harmless but worth knowing.
+14. Round 4: seasons/events also follow the device clock. Without an RTC the season is
+    whatever the boot date says. Events are keyed by year, so each one can be done once
+    per year.
+15. Hot-seat is turn-based on one device and pays rewards once (best score). Fishing is
+    single-player only.
+16. Companions don't age or get needs while napping, on purpose. Bond and growth are
+    per pet. Story progress, stickers, the fish book and furniture are shared.
+17. Photo mode writes PNGs (~40-250 KB each) to `photos/`; there is no in-game gallery
+    yet.
+18. The Knulli launcher has not been tried on a device. Per a forum report (unconfirmed),
+    `import os` in a .pygame file has locked up some setups; if that happens, launch
+    `main_pygame.py` through Ports instead.

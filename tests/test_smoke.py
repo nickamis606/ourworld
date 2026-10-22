@@ -1,0 +1,344 @@
+"""Headless smoke tests: boot every scene and run frames through the real loop."""
+import os
+
+import pygame
+import pytest
+
+
+@pytest.fixture
+def game(tmp_path):
+    os.environ["OURWORLD_SAVE"] = str(tmp_path / "save.json")
+    pygame.init()
+    screen = pygame.display.set_mode((640, 480))
+    import main_pygame
+    g = main_pygame.Game(screen=screen)
+    yield g
+    os.environ.pop("OURWORLD_SAVE", None)
+
+
+def key(k):
+    return [pygame.event.Event(pygame.KEYDOWN, key=k, mod=0, unicode="", scancode=0),
+            pygame.event.Event(pygame.KEYUP, key=k, mod=0, unicode="", scancode=0)]
+
+
+def run(g, n, events=()):
+    g.step(1 / 30, list(events))
+    for _ in range(n):
+        g.step(1 / 30, [])
+
+
+def skip_dialogue(g, limit=80):
+    for _ in range(limit):
+        if not getattr(g.scene, "dialog", None):
+            return
+        run(g, 1, key(pygame.K_SPACE))
+    raise AssertionError("dialogue never ended")
+
+
+def unlock_all(g):
+    from core.world import LOCATIONS
+    g.state.story.unlocked |= set(LOCATIONS)
+
+
+def adopt(g, intro=False):
+    run(g, 2, key(pygame.K_SPACE))      # pick the species
+    if g.scene_name == "title" and g.scene.mode == "trait":
+        run(g, 2, key(pygame.K_SPACE))  # personality: first entry (Playful)
+    run(g, 20)
+    assert g.scene_name == "main"
+    if not intro:
+        assert g.scene.dialog is not None   # the story intro plays for a new pet
+        skip_dialogue(g)
+
+
+def test_boot_and_adopt(game):
+    run(game, 10)
+    assert game.scene_name == "title"
+    adopt(game)
+    assert game.state.has_save and os.path.exists(game.state.save_manager.path)
+
+
+def test_every_location_draws(game):
+    adopt(game)
+    from core.world import LOCATIONS
+    for loc in LOCATIONS:
+        game.state.pet.location = loc
+        game.scene.on_enter()
+        run(game, 30)
+        for _ in range(len(game.scene.bar.items) + 1):
+            run(game, 1, key(pygame.K_RIGHT))
+
+
+def test_care_action_via_keys_changes_needs(game):
+    adopt(game)
+    game.state.pet.needs.hunger = 30
+    game.scene.bar.focus_id("feed")
+    run(game, 60, key(pygame.K_SPACE))
+    assert game.state.pet.needs.hunger > 50
+
+
+def test_map_travel_to_park(game):
+    adopt(game)
+    run(game, 2, key(pygame.K_m))
+    assert game.scene.map.open
+    run(game, 2, key(pygame.K_RIGHT))
+    run(game, 2, key(pygame.K_RIGHT))
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 20)
+    assert game.scene_name == "travel"
+    run(game, 80)
+    assert game.scene_name == "main" and game.state.pet.location == "park"
+
+
+@pytest.mark.parametrize("which", ["snake", "pet_dash", "frogger", "brick_bop", "pet_pairs", "mole_pop"])
+def test_minigames_run_and_pay_out(game, which):
+    adopt(game)
+    game.state.pet.needs.energy = 80
+    game.switch("arcade", game=which)
+    run(game, 20)
+    assert game.scene_name == "arcade" and game.scene.phase == "play"
+    for i in range(300):
+        run(game, 0, key([pygame.K_UP, pygame.K_SPACE, pygame.K_LEFT, pygame.K_DOWN][i % 4]))
+        if game.scene.phase == "result":
+            break
+    if game.scene.phase != "result":   # survived 10 s: end the run from the pause menu
+        run(game, 1, key(pygame.K_RETURN))
+        run(game, 1, key(pygame.K_DOWN))
+        run(game, 1, key(pygame.K_SPACE))
+    assert game.scene.phase == "result"
+    run(game, 2, key(pygame.K_ESCAPE))
+    run(game, 2, key(pygame.K_ESCAPE))
+    run(game, 20)
+    assert game.scene_name == "main"
+
+
+@pytest.mark.parametrize("place,action", [("pond", "swim"), ("library", "read"), ("spa", "pamper")])
+def test_new_place_action_via_keys(game, place, action):
+    adopt(game)
+    st = game.state
+    st.pet.location = place
+    st.pet.coins = 100
+    st.pet.needs.cleanliness = 30
+    st.pet.needs.happiness = 30
+    st.pet.needs.energy = 60
+    game.scene.on_enter(arrived=True)
+    run(game, 5)
+    before = st.pet.care_count
+    assert game.scene.bar.focus_id("place:" + action) is not False
+    assert game.scene.bar.current.id == "place:" + action
+    run(game, 60, key(pygame.K_SPACE))
+    assert st.pet.care_count == before + 1
+    from sprites import backdrops
+    assert backdrops.get(place).get_size() == (640, 480)
+    assert backdrops.get(place) is backdrops.get(place)  # built once, cached
+
+
+def test_map_travel_to_pond_and_back_row(game):
+    adopt(game)
+    unlock_all(game)
+    run(game, 2, key(pygame.K_m))
+    run(game, 2, key(pygame.K_DOWN))
+    run(game, 2, key(pygame.K_DOWN))
+    assert game.scene.map.selected == "pond"
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 100)
+    assert game.scene_name == "main" and game.state.pet.location == "pond"
+    run(game, 2, key(pygame.K_m))
+    run(game, 2, key(pygame.K_DOWN))
+    assert game.scene.map.selected == "willow_woods"
+    run(game, 2, key(pygame.K_DOWN))   # wraps to the top row
+    assert game.scene.map.selected == "home"
+
+
+def test_arcade_place_opens_picker_with_all_games(game):
+    adopt(game)
+    from minigames import GAME_INFO
+    game.state.pet.location = "arcade"
+    game.state.pet.needs.energy = 80
+    game.scene.on_enter()
+    game.scene.bar.focus_id("games")
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 30)
+    assert game.scene_name == "arcade" and game.scene.phase == "pick"
+    seen = set()
+    from scenes.arcade_scene import ORDER
+    for _ in range(len(GAME_INFO)):
+        seen.add(ORDER[game.scene.index])
+        run(game, 1, key(pygame.K_RIGHT))
+    assert seen == set(GAME_INFO) and len(seen) >= 6
+    run(game, 1, key(pygame.K_DOWN))
+    assert game.scene.index == 3
+
+
+def test_brick_bop_paddle_follows_held_input(game):
+    adopt(game)
+    game.state.pet.needs.energy = 80
+    game.switch("arcade", game="brick_bop")
+    run(game, 20)
+    mg = game.scene.minigame
+    x0 = mg.paddle_x
+    game.step(1 / 30, [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT, mod=0, unicode="", scancode=0)])
+    run(game, 15)
+    assert mg.paddle_x > x0
+    game.step(1 / 30, [pygame.event.Event(pygame.KEYUP, key=pygame.K_RIGHT, mod=0, unicode="", scancode=0)])
+
+
+def test_gamepad_hat_and_buttons(game):
+    adopt(game)
+    start = game.scene.bar.focus
+    run(game, 1, [pygame.event.Event(pygame.JOYHATMOTION, value=(1, 0), joy=0, instance_id=99, hat=0),
+                  pygame.event.Event(pygame.JOYHATMOTION, value=(0, 0), joy=0, instance_id=99, hat=0)])
+    assert game.scene.bar.focus == (start + 1) % len(game.scene.bar.items)
+    game.state.pet.needs.hunger = 30
+    game.scene.bar.focus_id("feed")
+    run(game, 40, [pygame.event.Event(pygame.JOYBUTTONDOWN, button=0, joy=0, instance_id=99),
+                   pygame.event.Event(pygame.JOYBUTTONUP, button=0, joy=0, instance_id=99)])
+    assert game.state.pet.needs.hunger > 50
+
+
+def test_pause_and_quit_saves(game):
+    adopt(game)
+    run(game, 2, key(pygame.K_RETURN))
+    assert game.scene.pause is not None
+    run(game, 1, key(pygame.K_UP))   # wraps to the last entry: "Quit game"
+    assert game.scene.pause.selected == "quit"
+    run(game, 1, key(pygame.K_SPACE))
+    assert not game.running
+
+
+def test_continue_skips_select(tmp_path):
+    os.environ["OURWORLD_SAVE"] = str(tmp_path / "save.json")
+    pygame.init()
+    screen = pygame.display.set_mode((640, 480))
+    import main_pygame
+    g = main_pygame.Game(screen=screen)
+    adopt(g)
+    g.state.save()
+    g2 = main_pygame.Game(screen=screen)
+    assert g2.scene_name == "title" and g2.scene.mode == "menu"
+    run(g2, 2, key(pygame.K_SPACE))
+    run(g2, 20)
+    assert g2.scene_name == "main" and g2.state.pet.name == g.state.pet.name
+    assert g2.scene.dialog is None      # intro only plays once
+    os.environ.pop("OURWORLD_SAVE", None)
+
+
+# ------------------------------------------------------------------ story
+def test_chapter_one_by_buttons(game):
+    """Intro -> feed -> play -> map to Town Square -> talk to the Mayor (all via keys)."""
+    adopt(game, intro=True)
+    assert game.scene.dialog is not None
+    skip_dialogue(game)
+    st = game.state
+    assert st.story.status("welcome") == "active"
+    st.pet.needs.hunger = 30
+    game.scene.bar.focus_id("feed")
+    run(game, 70, key(pygame.K_SPACE))
+    st.pet.needs.happiness = 30
+    game.scene.bar.focus_id("play")
+    run(game, 90, key(pygame.K_SPACE))
+    run(game, 120)  # let notices drain
+    # Arcade is still locked
+    run(game, 2, key(pygame.K_m))
+    run(game, 2, key(pygame.K_DOWN))
+    run(game, 2, key(pygame.K_RIGHT))
+    run(game, 2, key(pygame.K_RIGHT))
+    assert game.scene.map.selected == "arcade"
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 30)
+    assert game.scene_name == "main" and st.pet.location == "home"
+    # Town Square: home (0,0) -> down x3 -> right
+    run(game, 2, key(pygame.K_m))
+    for _ in range(3):
+        run(game, 2, key(pygame.K_DOWN))
+    run(game, 2, key(pygame.K_RIGHT))
+    assert game.scene.map.selected == "town_square"
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 100)
+    assert game.scene_name == "main" and st.pet.location == "town_square"
+    assert st.story.status("welcome") == "ready"
+    run(game, 1, key(pygame.K_LALT))          # Y = talk
+    assert game.scene.dialog is not None
+    assert game.scene.dialog.lines[0][0] == "mayor"
+    skip_dialogue(game)
+    assert st.story.status("welcome") == "done" and st.story.status("park_laughs") == "active"
+    assert "town_key" in st.story.stickers
+
+
+def test_scripted_run_to_the_ending(game):
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))
+    import story_script as S
+    adopt(game)
+    st = game.state
+    S.chapter1(st); S.chapter2(st); S.chapter3(st); S.chapter4(st)
+    S.talk(st, "mayor")
+    if st.bond_level < 4:
+        st.add_bond(200)
+    S.go(st, "lantern_hill")
+    game.scene.on_enter()
+    skip_dialogue(game)            # queued chapter outros play first
+    st.story.notices.clear()
+    run(game, 5)
+    game.scene.bar.focus_id("place:light")
+    assert game.scene.bar.current.id == "place:light" and game.scene.bar.current.enabled
+    run(game, 3, key(pygame.K_SPACE))
+    assert st.story.finished
+    run(game, 10)
+    assert game.scene.dialog is not None   # the ending conversation
+    skip_dialogue(game, 200)
+    run(game, 30)
+    assert game.scene_name == "ending"
+    run(game, 120)
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 30)
+    assert game.scene_name == "main" and not st.story.ending_pending
+    # post-game: daily wishes in the journal
+    run(game, 1, key(pygame.K_LSHIFT))     # X = journal
+    assert game.scene.journal.open
+    for _ in range(3):
+        run(game, 2, key(pygame.K_t))      # R = next tab
+    run(game, 2, key(pygame.K_ESCAPE))
+    assert not game.scene.journal.open
+    # saved and reloadable
+    import main_pygame
+    g2 = main_pygame.Game(screen=game.screen)
+    assert g2.state.story.finished and g2.state.story.daily.get("tasks")
+
+
+def test_journal_tabs_and_dialogue_box(game):
+    adopt(game)
+    run(game, 1, key(pygame.K_LSHIFT))
+    j = game.scene.journal
+    assert j.open and j.tab == 0
+    for tab in (1, 2, 3, 0):
+        run(game, 2, key(pygame.K_t))
+        assert j.tab == tab
+    run(game, 1, key(pygame.K_t))
+    for _ in range(25):
+        run(game, 1, key(pygame.K_RIGHT))
+        run(game, 1, key(pygame.K_DOWN))
+    run(game, 1, key(pygame.K_ESCAPE))
+    from ui.dialogue_box import DialogueBox
+    done = []
+    box = DialogueBox([("mayor", "Hello there, friend!"), ("", "Bye.")], on_done=lambda: done.append(1))
+    box.handle_action("A")            # reveal line 1
+    assert box.index == 0 and box.shown == len("Hello there, friend!")
+    box.handle_action("A")
+    box.handle_action("B")
+    box.handle_action("B")
+    assert box.done and done == [1]
+
+
+def test_every_place_draws_at_night_with_townsfolk(game, monkeypatch):
+    monkeypatch.setenv("OURWORLD_HOUR", "23")
+    adopt(game)
+    unlock_all(game)
+    from core.world import LOCATIONS
+    from sprites import backdrops
+    for loc in LOCATIONS:
+        game.state.pet.location = loc
+        game.scene.on_enter()
+        run(game, 3)
+    assert len(backdrops._tinted) <= backdrops._TINT_MAX
+    assert game.state.time_of_day() == "night"

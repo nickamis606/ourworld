@@ -9,8 +9,8 @@ centered level banner, level-transition pause, and clear restart path.
 
 import math
 import pygame
+from minigames.base import MinigameBase
 import random
-from dataclasses import dataclass
 
 SCREEN_WIDTH = 640
 SCREEN_HEIGHT = 480
@@ -52,45 +52,9 @@ LEVEL_TRANSITION_MS = 1800
 FROG_RESET_MS = 300
 
 
-@dataclass
-class MinigameResult:
-    score: int
-    completed: bool
-    message: str = ""
-
-
-class MinigameBase:
-    def __init__(self, screen, clock):
-        self.screen = screen
-        self.clock = clock
-        self.running = True
-        self.score = 0
-        self.font = pygame.font.SysFont("arial", 24)
-        self.big_font = pygame.font.SysFont("arial", 36, bold=True)
-        self.small_font = pygame.font.SysFont("arial", 15)
-
-    def handle_key(self, key): pass
-    def update(self, dt): pass
-    def draw(self, screen=None): pass
-
-    def run(self):
-        while self.running:
-            dt = self.clock.tick(30) / 1000.0
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                    return MinigameResult(self.score, False, "quit")
-                if event.type == pygame.KEYDOWN:
-                    self.handle_key(event.key)
-            self.update(dt)
-            self.draw()
-            pygame.display.flip()
-        return MinigameResult(self.score, True)
-
-
 class FroggerGame(MinigameBase):
     def __init__(self, screen, clock):
-        super().__init__(screen, clock)
+        super().__init__(screen, clock, (31, 47, 20))
         self.reset_game()
 
     # ------------------------------------------------------------------
@@ -214,6 +178,9 @@ class FroggerGame(MinigameBase):
             moved = True
 
         if moved:
+            lane = next((l for l in self.lanes if l['y'] == self.frog_y), None)
+            if not (lane and lane.get('is_water', False)):
+                self.frog_x = int(round(self.frog_x))  # snap back to grid on land
             self.last_move_time = now
             if self.frog_y < 17:
                 self.score += 8
@@ -232,16 +199,18 @@ class FroggerGame(MinigameBase):
         if self.show_instructions and self.instruction_timer > 2800:
             self.show_instructions = False
 
+        k = min(dt, 0.05) * 30.0  # lane speeds were tuned per 30 FPS frame
+        self._k = k
         # Vehicles
         for car in self.cars:
-            car['x'] += car['speed'] * car['dir'] * 0.5
+            car['x'] += car['speed'] * car['dir'] * 0.5 * k
             if car['x'] < -car['width']:
                 car['x'] = GRID_COLS + 2
             if car['x'] > GRID_COLS + 2:
                 car['x'] = -car['width']
 
         for log in self.logs:
-            log['x'] += log['speed'] * log['dir'] * 0.5
+            log['x'] += log['speed'] * log['dir'] * 0.5 * k
             if log['x'] < -log['width']:
                 log['x'] = GRID_COLS + 2
             if log['x'] > GRID_COLS + 2:
@@ -301,8 +270,11 @@ class FroggerGame(MinigameBase):
                     log_right = log['x'] + log['width']
                     if log_left - 0.2 <= self.frog_x < log_right + 0.2:
                         on_log = True
-                        self.frog_x += log['speed'] * log['dir'] * 0.65
-                        self.frog_x = max(0, min(GRID_COLS - 1, int(round(self.frog_x))))
+                        # ride the log at exactly the log's speed (float position);
+                        # the old code rounded every frame, so the frog either
+                        # stuck in place or outran the log and drowned.
+                        self.frog_x += log['speed'] * log['dir'] * 0.5 * getattr(self, '_k', 1.0)
+                        self.frog_x = max(0.0, min(GRID_COLS - 1.0, self.frog_x))
                         break
             if not on_log and self.death_timer <= 0:
                 self._lose_life(DEATH_WATER)
@@ -493,30 +465,29 @@ class FroggerGame(MinigameBase):
         level_text = self.big_font.render(f"LEVEL {self.level}", True, ACCENT)
         target.blit(level_text,
                      (SCREEN_WIDTH // 2 - level_text.get_width() // 2, 8))
-        target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT),
-                     (12, 8 + level_text.get_height() + 4))
+        target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT), (12, 6))
         if self.heart_flash > 0:
             pulse = 0.5 + 0.5 * ((now // 100) % 2)
             heart_color = (int(255 * pulse + 250 * (1 - pulse)),
                            int(80 * pulse + 250 * (1 - pulse)),
                            int(80 * pulse + 250 * (1 - pulse)))
-            heart_text = f"LIVES: {'♥' * self.lives}"
+            heart_text = f"LIVES: {self.lives}"
             target.blit(self.small_font.render(heart_text, True, heart_color),
                         (12, 36))
         else:
-            target.blit(self.small_font.render(f"LIVES: {'♥' * self.lives}", True, TEXT),
+            target.blit(self.small_font.render(f"LIVES: {self.lives}", True, TEXT),
                          (12, 36))
-        target.blit(self.small_font.render("OURWORLD ARCADE • FROGGER", True, ACCENT),
-                     (SCREEN_WIDTH - 250, 10))
+        tag = self.small_font.render("FROGGER", True, ACCENT)
+        target.blit(tag, (SCREEN_WIDTH - tag.get_width() - 12, 10))
 
         # Home progress
         filled = sum(self.homes)
         target.blit(self.small_font.render(f"HOMES: {filled}/5", True, TEXT),
-                     (SCREEN_WIDTH - 120, 36))
+                     (SCREEN_WIDTH - 110, 36))
 
         if self.show_instructions:
             inst = self.small_font.render(
-                "Arrows/WASD: Move   |   Fill all homes to advance level!",
+                "D-pad: hop   |   Fill all 5 homes to advance!",
                 True, (200, 230, 200))
             target.blit(inst,
                         (SCREEN_WIDTH // 2 - inst.get_width() // 2, 65))
@@ -545,7 +516,7 @@ class FroggerGame(MinigameBase):
             msg = self.big_font.render("GAME OVER", True, (255, 120, 120))
             target.blit(msg,
                         (SCREEN_WIDTH // 2 - msg.get_width() // 2, 160))
-            sub = self.font.render("R = Try Again    ESC = Quit",
+            sub = self.font.render("Tallying your prize...",
                                    True, (220, 200, 200))
             target.blit(sub,
                         (SCREEN_WIDTH // 2 - sub.get_width() // 2,

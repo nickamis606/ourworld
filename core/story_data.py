@@ -195,7 +195,15 @@ STICKERS = {
     "rainbow": ("Rainbow Leaf", "leaf", (250, 150, 60)),
     "firefly": ("Firefly", "star", (220, 250, 120)),
     "daily_star": ("Daily Star", "star", (120, 220, 250)),
+    # round 4: calendar events, weekly challenge, fishing
+    "pumpkin": ("Fair Pumpkin", "pumpkin", (240, 130, 40)),
+    "snowman": ("Snow Pal", "snowman", (150, 190, 230)),
+    "egg": ("Painted Egg", "egg", (250, 150, 200)),
+    "sun": ("Summer Sun", "sun", (250, 200, 50)),
+    "trophy": ("Weekly Champ", "trophy", (240, 190, 50)),
+    "angler": ("Ace Angler", "fish", (90, 160, 230)),
 }
+EVENT_STICKERS = ["pumpkin", "snowman", "egg", "sun"]
 WOODS_STICKERS = ["acorn", "mushroom", "feather", "pinecone", "ladybug", "rainbow", "firefly"]
 
 # ---------------------------------------------------------------- bond
@@ -203,7 +211,7 @@ BOND_LEVELS = [0, 25, 60, 110, 180, 270, 380, 520]
 BOND_TITLES = ["New Friends", "Pals", "Buddies", "Best Buddies", "Super Pals",
                "Soul Pals", "Legendary Pals", "Forever Friends"]
 BOND_XP = {"care": 2, "place": 3, "game": 2, "buy": 1, "plant": 2, "harvest": 2,
-           "decorate": 5, "travel": 0}
+           "decorate": 5, "travel": 0, "fish": 2, "furnish": 1}
 
 # ------------------------------------------------------------ daily wishes
 # Unlocked once the arcade opens (chapter 3+). 3 per calendar day.
@@ -375,3 +383,8 @@ DIALOGUE = {
 from .pets import GROW_DIALOGUE as _GROW  # noqa: E402
 for _k, _v in _GROW.items():
     DIALOGUE["grow_" + _k] = _v
+
+# furniture handed over with some quest rewards (round 4, core/furniture.py)
+from .furniture import QUEST_FURNITURE as _QF  # noqa: E402
+for _q, _f in _QF.items():
+    QUESTS[_q]["reward"]["furniture"] = _f

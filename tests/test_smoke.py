@@ -311,7 +311,7 @@ def test_journal_tabs_and_dialogue_box(game):
     run(game, 1, key(pygame.K_LSHIFT))
     j = game.scene.journal
     assert j.open and j.tab == 0
-    for tab in (1, 2, 0):
+    for tab in (1, 2, 3, 0):
         run(game, 2, key(pygame.K_t))
         assert j.tab == tab
     run(game, 1, key(pygame.K_t))

@@ -329,3 +329,233 @@ def test_mopey_dims_the_town_and_droops(game):
     c1, c2 = bright.get_at((320, 200)), dim.get_at((320, 200))
     assert sum(c2[:3]) < sum(c1[:3])
     game.scene.draw(game.screen)
+
+
+# --------------------------------------------------- seasons & events
+def test_seasons_and_event_dates():
+    import datetime as dt
+    from core import calendar as C
+    assert C.season_of(dt.date(2026, 10, 17)) == "fall"
+    assert C.season_of(dt.date(2026, 1, 2)) == "winter"
+    assert C.active_event(dt.date(2026, 10, 17)) == "harvest_fair"
+    assert C.active_event(dt.date(2026, 12, 25)) == "snow_day"
+    assert C.active_event(dt.date(2027, 1, 3)) == "snow_day"
+    assert C.event_year(dt.date(2027, 1, 3), "snow_day") == 2026
+    assert C.active_event(dt.date(2026, 4, 1)) == "egg_hunt"
+    assert C.active_event(dt.date(2026, 7, 4)) == "summer_splash"
+    assert C.active_event(dt.date(2026, 6, 10)) is None
+    assert C.week_id(dt.date(2026, 10, 17)) == "2026-W42"
+
+
+def test_date_override_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("OURWORLD_DATE", "2026-12-24")
+    gs = fresh(tmp_path)
+    assert gs.season() == "winter" and gs.current_event() == "snow_day"
+    monkeypatch.setenv("OURWORLD_DATE", "not-a-date")
+    assert gs.season() in ("spring", "summer", "fall", "winter")
+
+
+def test_harvest_fair_doubles_coins_and_rewards(monkeypatch, tmp_path):
+    monkeypatch.setenv("OURWORLD_DATE", "2026-10-17")
+    gs = fresh(tmp_path)
+    gs.pet.location = "backyard"
+    coins = []
+    for _ in range(3):
+        gs.pet.garden.append({"type": "flower", "stage": 3, "age": 0.0})
+        r = gs.harvest_plant()
+        coins.append(r["coins"])
+    from core.world import PLANTS
+    assert coins[0] == 2 * PLANTS["flower"]["coins"]
+    st = gs.event_status()
+    assert st["done"] and "pumpkin" in gs.story.stickers
+    assert gs.extras.furniture.get("pumpkin") == 1
+
+
+def test_snow_day_snowman_once(monkeypatch, tmp_path):
+    monkeypatch.setenv("OURWORLD_DATE", "2026-12-28")
+    gs = fresh(tmp_path)
+    gs.story.unlocked.add("park")
+    assert "snowman" in gs.place_actions_here("park")
+    gs.pet.location = "park"
+    r = gs.perform_place_action("snowman")
+    assert r["success"] and gs.snowman_built()
+    assert gs.backdrop_extras("park") == ("snowman",)
+    assert "snowman" in gs.story.stickers
+    ok, why = gs.can_place_action("snowman")
+    assert not ok and "already" in why
+    monkeypatch.setenv("OURWORLD_DATE", "2026-06-10")
+    assert "snowman" not in gs.place_actions_here("park")
+    ok, why = gs.can_place_action("snowman")
+    assert not ok and "Snow Day" in why
+
+
+def test_egg_hunt_needs_five(monkeypatch, tmp_path):
+    monkeypatch.setenv("OURWORLD_DATE", "2026-04-02")
+    gs = fresh(tmp_path)
+    gs.pet.location = "park"
+    for i in range(5):
+        gs.pet.cooldowns.clear()
+        gs.pet.needs.energy = 80
+        assert gs.perform_place_action("egg_hunt")["success"], i
+    assert gs.event_status()["done"] and "egg" in gs.story.stickers
+    gs.pet.cooldowns.clear()
+    assert not gs.can_place_action("egg_hunt")[0]
+
+
+@pytest.mark.parametrize("date", ["2026-10-17", "2026-12-24", "2026-04-02", "2026-07-04"])
+def test_every_place_draws_in_every_season(game, monkeypatch, date):
+    from core import world
+    from sprites import backdrops
+    monkeypatch.setenv("OURWORLD_DATE", date)
+    adopt(game)
+    for loc in world.LOCATIONS:
+        game.state.story.unlocked.add(loc)
+        game.state.pet.location = loc
+        game.switch("main", fade=False)
+        run(game, 2)
+    run(game, 1, key(pygame.K_LSHIFT))
+    assert game.scene.journal.open and "event" in game.scene.journal._entries(game.state.story)
+    run(game, 2)
+    plain = backdrops.get("park", "day")
+    tinted = backdrops.get("park", "day", "", game.state.season(), game.state.current_event() or "")
+    assert plain is not tinted
+
+
+def test_winter_music_outdoors():
+    from engine.audio import track_for
+    assert track_for("pond", "day", "winter") == "winter"
+    assert track_for("willow_woods", "day", "winter") == "woods"
+
+
+# --------------------------------------------------------------- fishing
+def test_fish_pool_depends_on_time_and_season():
+    import random
+    from core import fish_data as FD
+    assert "moonfish" in FD.available("night", "fall")
+    assert "moonfish" not in FD.available("day", "fall")
+    assert "icefish" in FD.available("day", "winter")
+    rng = random.Random(1)
+    got = {FD.roll(rng, "day", "summer") for _ in range(400)}
+    assert "sunny" in got and "moonfish" not in got and "koi" in got
+
+
+def test_finish_fishing_fills_the_book(tmp_path):
+    gs = fresh(tmp_path)
+    gs.pet.location = "pond"
+    c0 = gs.pet.coins
+    r = gs.finish_fishing([("minnow", 12), ("sunfish", 15), ("minnow", 14)])
+    assert r["coins"] == 2 + 4 + 2 and gs.pet.coins == c0 + 8
+    assert gs.extras.fish["minnow"] == {"count": 2, "best": 14}
+    assert r["new"] == ["minnow", "sunfish"]
+    gs.finish_fishing([(k, 10) for k in ("bluegill", "goldfish", "catfish", "trout")])
+    assert "angler" in gs.story.stickers and gs.extras.furniture.get("fishbowl") == 1
+    gs.finish_fishing([("not_a_fish", 3)])     # ignored, no crash
+
+
+def _play_fishing(mg, catch=True):
+    """Drive the Fishing minigame by hand: cast, wait for the bite, hook, reel."""
+    mg.handle_action("A")                      # cast
+    for _ in range(200):
+        mg.update(1 / 30)
+        if mg.phase == "bite":
+            break
+    assert mg.phase == "bite"
+    mg.handle_action("A")                      # hook
+    assert mg.phase == "reel"
+    for _ in range(600):
+        if catch:
+            mg.zone_x = mg.fish_x              # perfect tracking
+        else:
+            mg.zone_x = 0.15 if mg.fish_x > 0.5 else 0.85
+        mg.held = set()
+        mg.update(1 / 30)
+        if mg.phase != "reel":
+            break
+
+
+def test_fishing_minigame_catch_and_escape():
+    from minigames.fishing import Fishing, CASTS
+    screen = pygame.display.set_mode((640, 480))
+    mg = Fishing(screen, seed=4)
+    _play_fishing(mg, catch=True)
+    assert mg.catches and mg.score > 0
+    mg.draw(screen)
+    for _ in range(60):
+        mg.update(1 / 30)
+    assert mg.phase == "aim"
+    _play_fishing(mg, catch=False)
+    assert len(mg.catches) == 1               # the second one wiggled free
+    while not mg.game_over:                   # use up casts (too-early presses)
+        if mg.phase == "aim":
+            mg.handle_action("A")
+            mg.handle_action("A")
+        mg.update(1 / 30)
+        mg.draw(screen)
+    assert mg.casts_left == 0 and CASTS == 5
+
+
+def test_fishing_from_the_pond_by_buttons(game):
+    adopt(game)
+    st = game.state
+    st.story.unlocked.add("pond")
+    st.change_location("pond")
+    game.switch("main", fade=False)
+    run(game, 3)
+    game.scene.bar.focus_id("fish")
+    run(game, 3, key(pygame.K_SPACE))
+    run(game, 20)
+    assert game.scene_name == "arcade" and game.scene.fishing
+    mg = game.scene.minigame
+    _play_fishing(mg, catch=True)
+    mg.casts_left = 0
+    for _ in range(80):
+        run(game, 1)
+        if mg.phase == "aim":
+            break
+    for _ in range(140):
+        run(game, 1)
+        if game.scene.phase == "result":
+            break
+    assert game.scene.phase == "result" and st.extras.fish
+    run(game, 1, key(pygame.K_x))              # B: back to the pond
+    run(game, 20)
+    assert game.scene_name == "main" and st.pet.location == "pond"
+    run(game, 1, key(pygame.K_LSHIFT))
+    j = game.scene.journal
+    j.tab = 3
+    run(game, 2)                               # Fish tab draws
+
+
+# ------------------------------------------------------ weekly challenge
+def test_weekly_challenge_rotates_and_pays_once(tmp_path):
+    t = [1792224000.0]   # 2026-10-17
+    gs = GameState(save_path=str(tmp_path / "w.json"), autoload=False, clock=lambda: t[0])
+    os.environ.pop("OURWORLD_DATE", None)
+    try:
+        gs.new_game("Pip", 0)
+        a = gs.weekly_challenge()
+        t[0] += 7 * 86400
+        b = gs.weekly_challenge()
+        assert a["week"] != b["week"] and a["game"] != b["game"]
+        coins = gs.pet.coins
+        r = gs.finish_minigame(b["game"], b["target"] - 1)
+        assert not r["weekly"]
+        r = gs.finish_minigame(b["game"], b["target"])
+        assert r["weekly"] and "trophy" in gs.story.stickers and gs.extras.trophies == 1
+        assert gs.extras.furniture.get("trophy") == 1
+        r = gs.finish_minigame(b["game"], b["target"] + 50)
+        assert r["weekly"] is False and gs.extras.trophies == 1
+        assert gs.pet.coins > coins
+    finally:
+        os.environ["OURWORLD_DATE"] = "2026-06-10"
+
+
+def test_arcade_picker_shows_weekly_banner(game):
+    adopt(game)
+    game.state.story.unlocked.add("arcade")
+    game.switch("arcade", fade=False)
+    run(game, 3)
+    wk = game.state.weekly_challenge()
+    from minigames import GAME_INFO
+    assert wk["game"] in GAME_INFO and wk["target"] > 0
+    game.scene.draw(game.screen)

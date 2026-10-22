@@ -21,6 +21,7 @@ from sprites.pet_sprite import PetSprite
 from sprites import npc_sprite
 from sprites import pet_extras, seasons
 from core import pets as petsmod
+from core import fish_data
 from ui.dialogue_box import DialogueBox
 from ui.journal import Journal
 from ui.settings_menu import SettingsMenu
@@ -44,8 +45,10 @@ DEFAULT_FEET = (320, 372)
 MOOD_TEXT = {"happy": ("Happy", (60, 170, 80)), "okay": ("Okay", (200, 150, 30)), "sad": ("Sad", (210, 70, 70))}
 TOAST_SECS = 2.6
 PLACE_COLORS = {"swim": (40, 140, 200), "read": (140, 90, 170), "pamper": (210, 100, 160),
-                "explore": (60, 130, 80), "light": (220, 160, 40)}
-PLACE_ANIM = {"swim": "clean", "read": "rest", "pamper": "clean", "explore": "play", "light": "play"}
+                "explore": (60, 130, 80), "light": (220, 160, 40), "snowman": (110, 160, 210),
+                "egg_hunt": (210, 120, 170)}
+PLACE_ANIM = {"swim": "clean", "read": "rest", "pamper": "clean", "explore": "play", "light": "play",
+              "snowman": "play", "egg_hunt": "play"}
 
 
 _shadow = []
@@ -100,12 +103,17 @@ class MainScene(BaseScene):
         self.pet.set_feet(*FEET.get(self.state.pet.location, DEFAULT_FEET))
         self.map.hide()
         self.journal.hide()
+        self.journal.gs = self.state
         self.pause = None
         self.dialog = None
         self.fx.clear()
         self.anim_kind = None
         self.animator.is_active = False
         msg = kwargs.get("message")
+        ev = self.state.event_status()
+        if ev and not ev["done"] and getattr(self.game, "_event_told", None) != ev["key"]:
+            self.game._event_told = ev["key"]
+            self.state.story.notices.append(f"The {ev['name']} is on! See your Journal (X).")
         if msg:
             self.say(msg)
         elif kwargs.get("arrived"):
@@ -219,10 +227,16 @@ class MainScene(BaseScene):
                 desc = f"{it['name']} - {it['price']} coins - {it['desc']}"
                 if not afford:
                     desc = f"{it['name']} costs {it['price']} coins - win more at the Arcade"
-                short = it["name"].replace("Sunflower Seeds", "Sunflwr").replace(" Seeds", "").replace("Candy ", "")
+                short = it.get("short") or it["name"].replace("Sunflower Seeds", "Sunflwr").replace(" Seeds", "").replace("Candy ", "")
                 items.append(ActionItem("buy:" + it["key"], short, it["key"], desc, afford,
                                         str(it["price"]), (200, 70, 110) if it.get("eat") else (70, 140, 110)))
-        for key in world.place_actions_for(loc):
+        if loc == "pond":
+            ok, why = s.can_fish()
+            n = len(s.extras.fish)
+            items.append(ActionItem("fish", "Fish", "fish",
+                                    f"Go fishing: 5 casts, coins for every catch ({n}/{len(fish_data.FISH)} in your Fish Book)"
+                                    if ok else why, ok, f"{n}", (60, 130, 200)))
+        for key in s.place_actions_here(loc):
             spec = world.PLACE_ACTIONS[key]
             ok, why = s.can_place_action(key)
             cost = f" - {spec['cost']} coins" if spec["cost"] else ""
@@ -413,6 +427,13 @@ class MainScene(BaseScene):
         elif item_id == "decorate":
             res = s.decorate_home()
             self._feedback(res, "decorate")
+        elif item_id == "fish":
+            ok, why = s.can_fish()
+            if not ok:
+                self.say(why, bad=True)
+                return
+            self.game.switch("arcade", game="fishing")
+            return
         elif item_id == "games" or item_id.startswith("game:"):
             if s.pet.needs.energy < 8:
                 self.say(f"{s.pet.name} is too tired for games. Rest first!", bad=True)
@@ -579,7 +600,9 @@ class MainScene(BaseScene):
                     labels[key] = "Shop"
                 elif key == "town_square":
                     labels[key] = "Mayor Maple"
-                for act in world.place_actions_for(key):
+                elif key == "pond":
+                    labels[key] = "Fishing"
+                for act in s.place_actions_here(key):
                     spec = world.PLACE_ACTIONS[act]
                     labels[key] = spec["label"] + (f" ({spec['cost']}c)" if spec["cost"] else "")
             locked = {k for k in world.LOCATIONS if not s.is_unlocked(k)}

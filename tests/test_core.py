@@ -246,7 +246,7 @@ def test_map_grid_is_complete_and_unique():
 def test_every_place_action_lives_somewhere():
     for key, spec in world.PLACE_ACTIONS.items():
         assert spec["location"] in world.LOCATIONS
-        assert key in world.place_actions_for(spec["location"])
+        assert key in world.place_actions_for(spec["location"], spec.get("event"))
     for loc in ("pond", "library", "spa"):
         assert world.place_actions_for(loc), loc
 

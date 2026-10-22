@@ -294,6 +294,9 @@ class StoryState:
             self.notices.append(f"You got the {D.SPARKS[sp][0]}! ({len(self.sparks)}/{D.SPARKS_NEEDED})")
         for loc in reward.get("unlock") or []:
             self.unlocked.add(loc)
+        f = reward.get("furniture")
+        if f and hasattr(gs, "add_furniture"):
+            gs.add_furniture(f)
 
     def _advance_chapter(self, gs) -> None:
         while self.chapter <= D.FINAL_CHAPTER:

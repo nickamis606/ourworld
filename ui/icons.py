@@ -11,7 +11,11 @@ def icon(name: str, size: int = 24) -> pygame.Surface:
     s = _cache.get(key)
     if s is None:
         s = pygame.Surface((size, size), pygame.SRCALPHA)
-        _DRAW.get(name, _dot)(s, size)
+        if name in _STICKER_ICONS:
+            shape, col = _STICKER_ICONS[name]
+            s.blit(sticker(shape, col, size, True), (0, 0))
+        else:
+            _DRAW.get(name, _dot)(s, size)
         _cache[key] = s
     return s
 
@@ -298,6 +302,11 @@ _DRAW = {
 
 # ---------------------------------------------------------------- stickers
 _scache: dict = {}
+# round-4 action icons reuse the sticker shapes (die-cut look)
+_STICKER_ICONS = {"fish": ("fish", (70, 140, 220)), "snowman": ("snowman", (150, 190, 230)),
+                  "egg": ("egg", (250, 150, 200)), "pumpkin": ("pumpkin", (240, 130, 40)),
+                  "trophy": ("trophy", (240, 190, 50)), "furnish": ("check", (200, 120, 80)),
+                  "pets": ("fox", (230, 140, 90)), "photo": ("star", (120, 160, 230))}
 
 
 def sticker(shape: str, col: tuple, size: int = 48, owned: bool = True) -> pygame.Surface:
@@ -374,6 +383,32 @@ def sticker(shape: str, col: tuple, size: int = 48, owned: bool = True) -> pygam
         pygame.draw.circle(s, (30, 30, 30), (int(m), int(n * .28)), int(n * .1))
         for (x, y) in ((.4, .48), (.6, .48), (.42, .64), (.58, .64)):
             pygame.draw.circle(s, (30, 30, 30), (int(n * x), int(n * y)), max(2, n // 18))
+    elif shape == "pumpkin":
+        pygame.draw.ellipse(s, c, (n * .2, n * .32, n * .6, n * .44))
+        pygame.draw.line(s, d, (m, n * .36), (m, n * .74), 2)
+        pygame.draw.rect(s, (80, 130, 50) if owned else d, (m - 2, n * .22, 5, n * .12))
+    elif shape == "snowman":
+        pygame.draw.circle(s, (240, 245, 255) if owned else c, (int(m), int(n * .64)), int(n * .18))
+        pygame.draw.circle(s, (240, 245, 255) if owned else c, (int(m), int(n * .36)), int(n * .13))
+        pygame.draw.circle(s, d, (int(m), int(n * .64)), int(n * .18), 1)
+        pygame.draw.circle(s, d, (int(m), int(n * .36)), int(n * .13), 1)
+        pygame.draw.polygon(s, (250, 140, 40) if owned else d, [(m, n * .36), (m + n * .14, n * .39), (m, n * .41)])
+    elif shape == "egg":
+        pygame.draw.ellipse(s, c, (n * .3, n * .2, n * .4, n * .58))
+        pygame.draw.line(s, (255, 255, 255), (n * .32, n * .5), (n * .68, n * .5), 3)
+    elif shape == "sun":
+        for k in range(8):
+            a = k * math.pi / 4
+            pygame.draw.line(s, c, (m, m), (m + math.cos(a) * n * .36, m + math.sin(a) * n * .36), 3)
+        pygame.draw.circle(s, c, (int(m), int(m)), int(n * .2))
+    elif shape == "trophy":
+        pygame.draw.polygon(s, c, [(n * .28, n * .22), (n * .72, n * .22), (n * .62, n * .52), (n * .38, n * .52)])
+        pygame.draw.rect(s, c, (n * .45, n * .5, n * .1, n * .16))
+        pygame.draw.rect(s, d, (n * .32, n * .66, n * .36, n * .1))
+    elif shape == "fish":
+        pygame.draw.ellipse(s, c, (n * .18, n * .36, n * .5, n * .28))
+        pygame.draw.polygon(s, c, [(n * .64, m), (n * .84, n * .34), (n * .84, n * .66)])
+        pygame.draw.circle(s, (30, 30, 30), (int(n * .3), int(n * .46)), max(2, n // 18))
     else:
         pygame.draw.circle(s, c, (int(m), int(m)), int(n * .25))
     _scache[key] = s

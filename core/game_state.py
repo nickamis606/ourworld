@@ -12,6 +12,11 @@ from .pet_state import PetState
 from .savegame import SaveManager
 from .rewards import minigame_reward
 from . import world
+import random
+import time
+
+from .story import StoryState, today_str, bond_level
+from . import story_data
 from .world import (LOCATIONS, PLANTS, SEED_TO_PLANT, MAX_STAGE, GARDEN_SLOTS,
                     DECORATION_SECS, FLOWERS_TO_DECORATE, PLACE_ACTIONS)
 
@@ -45,13 +50,29 @@ AUTOSAVE_EVERY = 60.0  # seconds of play between background autosaves
 class GameState:
     LOCATIONS = LOCATIONS  # backwards compat for old UI code
 
-    def __init__(self, save_path: str | None = None, autoload: bool = True):
+    def __init__(self, save_path: str | None = None, autoload: bool = True, clock=None):
+        self.clock = clock or time.time     # injectable for tests (daily wishes, day/night)
         self.pet = PetState()
+        self.story = StoryState.new_game()
         self.save_manager = SaveManager(self, save_path or DEFAULT_SAVE_PATH)
         self._has_save = self.load() if autoload else False
         self._autosave_timer = 0.0
+        self._story_timer = 0.0
+        self.story.refresh(self)
 
     # ------------------------------------------------------------------ time
+    def today(self) -> str:
+        return today_str(self.clock())
+
+    def time_of_day(self) -> str:
+        """'day' | 'evening' | 'night' from the local clock (OURWORLD_HOUR overrides)."""
+        hour = os.environ.get("OURWORLD_HOUR")
+        h = int(hour) if hour and hour.isdigit() else time.localtime(self.clock()).tm_hour
+        if 7 <= h < 18:
+            return "day"
+        if 18 <= h < 21 or 5 <= h < 7:
+            return "evening"
+        return "night"
     @property
     def has_save(self) -> bool:
         return self._has_save
@@ -83,6 +104,10 @@ class GameState:
         if self.pet.decoration_left > 0:
             self.pet.decoration_left = max(0.0, self.pet.decoration_left - dt)
         self._tick_cooldowns(dt)
+        self._story_timer += dt
+        if self._story_timer >= 1.0:
+            self._story_timer = 0.0
+            self.story.refresh(self)
         self._autosave_timer += dt
         if self._autosave_timer >= AUTOSAVE_EVERY:
             self._autosave_timer = 0.0
@@ -152,12 +177,49 @@ class GameState:
         return sum(self.pet.inventory.get(PLANTS[p]["seed"], 0) for p in PLANTS)
 
     # ------------------------------------------------------------- actions
+    def is_unlocked(self, location: str) -> bool:
+        return self.story.is_unlocked(location)
+
     def change_location(self, new_location: str) -> bool:
-        if new_location in LOCATIONS and new_location != self.pet.location:
+        if (new_location in LOCATIONS and new_location != self.pet.location
+                and self.is_unlocked(new_location)):
             self.pet.location = new_location
+            self._event("travel", new_location)
             self.trigger_auto_save()
             return True
         return False
+
+    # --------------------------------------------------------------- story
+    def _event(self, kind: str, key: str, score: int = 0) -> None:
+        xp = story_data.BOND_XP.get(kind, 0)
+        if xp:
+            self.add_bond(xp)
+        self.story.on_event(kind, key, self, score)
+
+    def add_bond(self, xp: int) -> None:
+        before = bond_level(self.pet.bond_xp)
+        self.pet.bond_xp += int(xp)
+        after = bond_level(self.pet.bond_xp)
+        if after > before:
+            title = story_data.BOND_TITLES[min(after, len(story_data.BOND_TITLES)) - 1]
+            self.story.notices.append(f"Bond level {after}: {title}!")
+
+    @property
+    def bond_level(self) -> int:
+        return bond_level(self.pet.bond_xp)
+
+    def talk(self, npc: str) -> dict:
+        info = story_data.NPCS.get(npc)
+        if not info:
+            return {"success": False, "msg": "Nobody's here", "lines": []}
+        if info["location"] != self.pet.location:
+            return {"success": False, "msg": f"{info['name']} isn't here", "lines": []}
+        lines = self.story.talk(npc, self)
+        self.trigger_auto_save()
+        return {"success": True, "msg": "", "lines": lines}
+
+    def next_dialogue(self) -> list:
+        return self.story.pop_dialogue(self.pet.name)
 
     def can_perform(self, action: str) -> tuple[bool, str]:
         if action not in CARE_ACTIONS:
@@ -183,6 +245,7 @@ class GameState:
             bonus = b[2]
         applied = self.pet.needs.apply(deltas)
         self.pet.care_count += 1
+        self._event("care", action)
         self.trigger_auto_save()
         msg = bonus or {
             "feed": f"Yum! {self.pet.name} loved that.",
@@ -205,8 +268,20 @@ class GameState:
         left = self.pet.cooldowns.get(key, 0)
         if left > 0:
             return False, f"{name} needs a little break first ({int(left) + 1}s)"
-        if getattr(self.pet.needs, spec["need"]) >= FULL_THRESHOLD:
+        if spec.get("need") and getattr(self.pet.needs, spec["need"]) >= FULL_THRESHOLD:
             return False, spec["refusal"].format(name=name)
+        if key == "light":
+            if self.story.finished:
+                return False, "The Wish Lantern is already shining bright!"
+            got = len(self.story.sparks)
+            if got < spec["sparks"]:
+                return False, f"The lantern needs {spec['sparks']} Sparks (you have {got})"
+            if self.story.status("light_lantern") not in ("active", "ready"):
+                return False, "Talk to Mayor Maple in the Town Square first"
+            need = next(st["count"] for st in story_data.QUESTS["light_lantern"]["steps"]
+                        if st.get("cond") == "bond")
+            if self.bond_level < need:
+                return False, f"Get closer to {name} first (Bond level {need})"
         if self.pet.needs.energy < spec["min_energy"]:
             return False, f"{name} is too tired for that."
         if self.pet.coins < spec["cost"]:
@@ -223,9 +298,29 @@ class GameState:
         if spec["cooldown"]:
             self.pet.cooldowns[key] = float(spec["cooldown"])
         self.pet.care_count += 1
+        msg = spec["msg"].format(name=self.pet.name)
+        found = None
+        if key == "explore":
+            found = self._explore_find()
+            msg += " " + found
+        self._event("place", key)
         self.trigger_auto_save()
-        return {"success": True, "msg": spec["msg"].format(name=self.pet.name),
-                "deltas": applied, "cost": spec["cost"]}
+        return {"success": True, "msg": msg, "deltas": applied, "cost": spec["cost"],
+                "found": found}
+
+    def _explore_find(self) -> str:
+        st = self.story
+        if st.status("lost_book") == "active" and st.quests["lost_book"]["progress"][0] == 0:
+            return "Found Olive's storybook under a log!"
+        rng = random.Random(f"{self.pet.care_count}-{len(st.stickers)}-{self.pet.bond_xp}")
+        missing = [s for s in story_data.WOODS_STICKERS if s not in st.stickers]
+        if missing and rng.random() < 0.7:
+            s = rng.choice(missing)
+            st.grant({"sticker": s}, self)
+            return f"Found a sticker: {story_data.STICKERS[s][0]}!"
+        coins = rng.randint(2, 6)
+        self.earn_coins(coins)
+        return f"Found {coins} shiny coins."
 
     def earn_coins(self, amount: int) -> None:
         self.pet.coins = max(0, min(99999, self.pet.coins + int(amount)))
@@ -249,6 +344,7 @@ class GameState:
         applied = self.pet.needs.apply(item.get("effect", {}))
         if not item.get("eat"):
             self.pet.inventory[item_key] = self.pet.inventory.get(item_key, 0) + 1
+        self._event("buy", item_key)
         self.trigger_auto_save()
         verb = "Ate" if item.get("eat") else "Bought"
         return {"success": True, "msg": f"{verb} {item['name']}!", "deltas": applied,
@@ -269,6 +365,7 @@ class GameState:
         ptype = SEED_TO_PLANT[seed_type]
         self.pet.garden.append({"type": ptype, "stage": 0, "age": 0.0})
         applied = self.pet.needs.apply({"happiness": 5})
+        self._event("plant", seed_type)
         self.trigger_auto_save()
         return {"success": True, "msg": f"Planted a {ptype}!", "deltas": applied}
 
@@ -280,6 +377,7 @@ class GameState:
                 self.pet.inventory["flowers"] = self.pet.inventory.get("flowers", 0) + 1
                 self.earn_coins(info["coins"])
                 applied = self.pet.needs.apply({"happiness": info["happiness"]})
+                self._event("harvest", plant["type"])
                 self.trigger_auto_save()
                 return {"success": True, "deltas": applied, "coins": info["coins"],
                         "msg": f"Harvested a {plant['type']}! +{info['coins']} coins"}
@@ -297,6 +395,7 @@ class GameState:
             self.pet.inventory.pop("flowers", None)
         self.pet.decoration_left = float(DECORATION_SECS)
         applied = self.pet.needs.apply({"happiness": 20})
+        self._event("decorate", "home")
         self.trigger_auto_save()
         return {"success": True, "msg": "Home decorated with flowers!", "deltas": applied}
 
@@ -306,6 +405,7 @@ class GameState:
         applied = self.pet.needs.apply({"happiness": reward["happiness"],
                                         "energy": reward["energy"]})
         self.earn_coins(reward["coins"])
+        self._event("game", game, int(score))
         self.save()
         return {"success": True, "coins": reward["coins"], "deltas": applied,
                 "new_best": new_best, "best": self.save_manager.get_high_score(game)}
@@ -322,11 +422,14 @@ class GameState:
 
     def new_game(self, name: str, species_id: int) -> None:
         self.pet = PetState(name=name, species_id=species_id)
+        self.story = StoryState.new_game()
+        self.story.refresh(self)
         self._has_save = True
         self.save()
 
     def reset(self) -> None:
         self.pet = PetState()
+        self.story = StoryState.new_game()
         self.save_manager.high_scores.clear()
         self._has_save = False
         self.save_manager.delete()

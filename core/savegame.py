@@ -1,8 +1,11 @@
 """SaveManager: atomic JSON save/load with migration. No pygame imports.
 
-Save format v2:
-    {"schema_version": 2, "saved_at": <unix time>, "high_scores": {...}, "pet": {...}}
-v0 (flat pet fields) and v1 (nested pet, monotonic timestamps) still load.
+Save format v3:
+    {"schema_version": 3, "saved_at": <unix time>, "high_scores": {...}, "pet": {...},
+     "story": {...}}
+v0 (flat pet fields), v1 (nested pet, monotonic timestamps) and v2 (no story)
+still load; saves without a story keep every place they had open (free roam)
+and start the story at chapter 1.
 """
 import json
 import os
@@ -10,7 +13,7 @@ import tempfile
 import time
 from typing import Dict, Optional
 
-SAVE_SCHEMA_VERSION = 2
+SAVE_SCHEMA_VERSION = 3
 AUTO_SAVE_COOLDOWN = 3.0
 
 
@@ -53,6 +56,15 @@ class SaveManager:
             hs = data.get("high_scores") or {}
             self.high_scores = {str(k): int(v) for k, v in hs.items()
                                 if isinstance(v, (int, float))}
+            from .story import StoryState
+            if isinstance(data.get("story"), dict):
+                try:
+                    self.game_state.story = StoryState.from_dict(data["story"])
+                except Exception as e:  # noqa: BLE001 - never lose a pet over story data
+                    print(f"[SaveManager] story data unreadable ({e}); keeping places open")
+                    self.game_state.story = StoryState.for_existing_save(self.game_state.pet.location)
+            else:
+                self.game_state.story = StoryState.for_existing_save(self.game_state.pet.location)
         except Exception as e:  # noqa: BLE001 - any bad field means bad save
             self._quarantine(f"invalid: {e}")
             return False
@@ -84,6 +96,7 @@ class SaveManager:
             "saved_at": time.time(),
             "high_scores": {k: int(v) for k, v in self.high_scores.items()},
             "pet": self.game_state.pet.to_dict(),
+            "story": self.game_state.story.to_dict(),
         }
         directory = os.path.dirname(self.path) or "."
         tmp_path = None

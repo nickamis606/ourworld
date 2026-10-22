@@ -50,9 +50,21 @@ LOCATIONS = {
         "name": "Paws & Claws Spa", "short": "Spa", "desc": "Pampering for a price: the full refresh.",
         "color": (200, 100, 160), "icon": "spa", "type": "service", "map": (2, 2),
     },
+    "willow_woods": {
+        "name": "Willow Woods", "short": "Woods", "desc": "Tall willows, mossy logs and hidden stickers to find.",
+        "color": (60, 130, 80), "icon": "woods", "type": "nature", "map": (0, 3),
+    },
+    "town_square": {
+        "name": "Town Square", "short": "Square", "desc": "The heart of Willowby. Mayor Maple is usually here.",
+        "color": (190, 120, 60), "icon": "square", "type": "civic", "map": (1, 3),
+    },
+    "lantern_hill": {
+        "name": "Lantern Hill", "short": "Lantern Hill", "desc": "The great Wish Lantern sits on top, waiting for six Sparks.",
+        "color": (220, 160, 40), "icon": "lantern", "type": "landmark", "map": (2, 3),
+    },
 }
 
-MAP_COLS, MAP_ROWS = 3, 3
+MAP_COLS, MAP_ROWS = 3, 4
 
 # One special action per new place. Pure data; GameState applies the rules.
 #   need: refuse when this need is already full; min_energy: refuse when tired;
@@ -73,6 +85,15 @@ PLACE_ACTIONS = {
                "need": "cleanliness", "min_energy": 0, "cost": 18, "cooldown": 0,
                "msg": "Bubbles, brushing and a nap. {name} feels brand new!",
                "refusal": "{name} is already pampered and spotless."},
+    "explore": {"location": "willow_woods", "label": "Explore", "icon": "explore",
+                "deltas": {"happiness": 8, "energy": -6, "cleanliness": -4},
+                "need": None, "min_energy": 10, "cost": 0, "cooldown": 20,
+                "msg": "{name} sniffed around the mossy logs...",
+                "refusal": ""},
+    "light": {"location": "lantern_hill", "label": "Light", "icon": "lantern",
+              "deltas": {"happiness": 30},
+              "need": None, "min_energy": 0, "cost": 0, "cooldown": 0, "sparks": 6,
+              "msg": "The Wish Lantern glows!", "refusal": ""},
 }
 
 

@@ -4,6 +4,7 @@ Items change with the location (care actions are always first, then the
 place's own actions, then Map). The focused tile's full description is
 shown on a line above the bar, so tiles can stay short at 640x480.
 """
+from __future__ import annotations
 from dataclasses import dataclass
 
 import pygame

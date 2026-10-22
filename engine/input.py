@@ -10,6 +10,7 @@ Override any mapping by dropping an ``input_map.json`` next to main_pygame.py:
      "joystick_buttons": {"0": "B", "1": "A"},   # raw joystick index -> action
      "swap_ab": false}
 """
+from __future__ import annotations
 import json
 import os
 

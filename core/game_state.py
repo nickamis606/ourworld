@@ -4,6 +4,7 @@ The pygame layer calls ``tick(dt)`` once per frame and the action methods on
 input. Every action returns a plain dict with at least ``success`` and ``msg``
 so the UI can show feedback without knowing the rules.
 """
+from __future__ import annotations
 import os
 
 from .needs import NEED_NAMES

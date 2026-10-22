@@ -5,6 +5,7 @@ falls back to a procedural blob, so a missing file never crashes the game.
 Transformed frames are cached by (scale, angle) bucket so idle frames cost
 one blit and animated frames reuse recent transforms.
 """
+from __future__ import annotations
 import math
 from collections import OrderedDict
 

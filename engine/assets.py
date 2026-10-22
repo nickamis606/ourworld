@@ -3,6 +3,7 @@
 Uses pygame's bundled default font (no fontconfig scan, identical on every
 device) and caches everything so nothing is created per frame.
 """
+from __future__ import annotations
 import os
 from collections import OrderedDict
 

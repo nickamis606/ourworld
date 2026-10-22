@@ -1,4 +1,5 @@
 """Static world data: locations, shop stock, map layout. No pygame imports."""
+from __future__ import annotations
 
 LOCATIONS = {
     "home": {

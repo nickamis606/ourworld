@@ -1,4 +1,5 @@
 """Pet needs: pure data + rules. No pygame imports."""
+from __future__ import annotations
 from dataclasses import dataclass, asdict, fields
 
 NEED_NAMES = ("hunger", "happiness", "energy", "cleanliness")

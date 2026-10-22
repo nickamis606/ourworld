@@ -1,4 +1,5 @@
 """Tiny feedback effects: floating text, particles, pet poses. Pygame-side."""
+from __future__ import annotations
 import math
 import random
 

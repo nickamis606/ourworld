@@ -11,7 +11,7 @@ import pygame
 W, H = 640, 480
 OUTDOOR_SEASONAL = {"park", "backyard", "pond", "willow_woods", "town_square", "lantern_hill"}
 
-SEASON_TINT = {"fall": (255, 236, 212), "winter": (226, 236, 255),
+SEASON_TINT = {"fall": (255, 236, 212), "winter": (222, 232, 255),
                "spring": (244, 255, 244), "summer": (255, 250, 228)}
 DIM_TINT = (182, 182, 200)       # gentle stakes: the town looks a bit gray
 
@@ -56,34 +56,41 @@ def paint_props(s, location, season, event, extras=()):
     """Bake season/event decorations into the backdrop copy."""
     rng = random.Random(f"{location}-{season}")
     outdoor = location in OUTDOOR_SEASONAL
+    # the visible ground is roughly y 300..392 (the action bar covers the rest)
     if outdoor and season == "winter":
-        for _ in range(9):     # snow drifts along the bottom
+        frost = pygame.Surface((W, H - 300), pygame.SRCALPHA)
+        for _ in range(26):     # soft snow patches over the ground
+            x = rng.randint(-60, W)
+            w = rng.randint(70, 170)
+            pygame.draw.ellipse(frost, (250, 252, 255, 150), (x, rng.randint(10, 80), w, rng.randint(14, 26)))
+        for _ in range(12):     # drifts along the front edge
             x = rng.randint(-40, W)
-            pygame.draw.ellipse(s, (246, 250, 255), (x, rng.randint(440, 470), rng.randint(80, 160), 40))
-        for _ in range(70):
-            s.set_at((rng.randint(0, W - 1), rng.randint(44, 470)), (255, 255, 255))
+            pygame.draw.ellipse(frost, (248, 251, 255, 235), (x, rng.randint(70, 84), rng.randint(90, 170), 34))
+        s.blit(frost, (0, 300))
+        for _ in range(90):
+            s.set_at((rng.randint(0, W - 1), rng.randint(44, 390)), (255, 255, 255))
     elif outdoor and season == "fall":
-        for _ in range(26):
-            x, y = rng.randint(0, W), rng.randint(400, 476)
-            pygame.draw.ellipse(s, rng.choice([(220, 110, 40), (230, 170, 50), (190, 70, 40)]), (x, y, 9, 5))
+        for _ in range(40):
+            x, y = rng.randint(0, W), rng.randint(320, 392)
+            pygame.draw.ellipse(s, rng.choice([(220, 110, 40), (230, 170, 50), (190, 70, 40)]), (x, y, 10, 5))
     elif outdoor and season == "spring":
-        for _ in range(22):
-            x, y = rng.randint(0, W), rng.randint(404, 476)
+        for _ in range(30):
+            x, y = rng.randint(0, W), rng.randint(320, 392)
             c = rng.choice([(255, 190, 220), (255, 250, 255), (250, 220, 120)])
             pygame.draw.circle(s, c, (x, y), 3)
     if event == "harvest_fair" and location == "town_square":
         _bunting(s, 70, [(240, 130, 40), (230, 200, 60), (190, 70, 40)])
-        for x, y in ((60, 420), (95, 430), (560, 424), (595, 432), (40, 440)):
-            _pumpkin(s, x, y)
+        for x, y, r in ((40, 372, 14), (76, 382, 11), (566, 374, 13), (604, 384, 12), (110, 386, 9)):
+            _pumpkin(s, x, y, r)
     if event == "harvest_fair" and location in ("park", "backyard"):
-        _pumpkin(s, 590, 440)
+        _pumpkin(s, 604, 380, 13)
     if event == "egg_hunt" and location == "park":
-        for i, (x, y) in enumerate(((70, 440), (180, 452), (470, 446), (600, 438))):
+        for i, (x, y) in enumerate(((70, 378), (190, 386), (470, 382), (606, 374))):
             _egg(s, x, y, [(250, 150, 190), (140, 200, 250), (250, 220, 90), (170, 230, 150)][i])
     if event == "summer_splash" and location == "pond":
         _bunting(s, 60, [(250, 90, 90), (250, 220, 70), (90, 170, 250)])
     if "snowman" in extras and location == "park":
-        _snowman(s, 560, 446)
+        _snowman(s, 196, 394)
 
 
 def draw_particles(surf, location, season, t):

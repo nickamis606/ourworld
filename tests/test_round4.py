@@ -786,3 +786,12 @@ def test_garbage_extras_never_lose_the_pet(tmp_path):
     g2 = GameState(save_path=gs.save_manager.path)
     assert g2.has_save and g2.pet.name == "Mochi"
     assert g2.extras.layout == [] and g2.extras.companions == []
+
+
+def test_reminder_interval_change_is_picked_up(tmp_path):
+    gs = fresh(tmp_path)
+    gs.settings.reminder_min = 30
+    assert not gs.reminder_due()
+    gs.settings.reminder_min = 15
+    gs.session_secs = 15 * 60 + 2
+    assert gs.reminder_due()

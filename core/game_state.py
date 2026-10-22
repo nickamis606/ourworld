@@ -62,7 +62,7 @@ class GameState(FeaturesMixin):
         self.settings = Settings()
         self.extras = WorldExtras()
         self.session_secs = 0.0          # play time since launch (parent reminder)
-        self._next_reminder = None
+        self._last_reminder = 0.0       # session time of the last reminder
         self.save_manager = SaveManager(self, save_path or DEFAULT_SAVE_PATH)
         self._has_save = self.load() if autoload else False
         self._autosave_timer = 0.0
@@ -98,17 +98,12 @@ class GameState(FeaturesMixin):
 
     # ------------------------------------------------------ parent tools
     def reminder_due(self) -> bool:
+        """True once reminder_min minutes have passed since launch / the last reminder."""
         m = self.settings.reminder_min
-        if not m:
-            self._next_reminder = None
-            return False
-        if self._next_reminder is None:
-            self._next_reminder = m * 60.0
-        return self.session_secs >= self._next_reminder
+        return bool(m) and self.session_secs >= self._last_reminder + m * 60.0
 
     def ack_reminder(self) -> None:
-        m = self.settings.reminder_min or 30
-        self._next_reminder = self.session_secs + m * 60.0
+        self._last_reminder = self.session_secs
 
     def decay_multipliers(self) -> dict:
         mult = {}

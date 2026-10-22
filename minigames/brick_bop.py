@@ -90,6 +90,8 @@ class BrickBop(MinigameBase):
         if self.vy > 0 and ball.colliderect(paddle):
             off = (self.bx - self.paddle_x) / (self.paddle_w / 2)
             ang = max(-1.0, min(1.0, off)) * 1.05
+            if abs(ang) < 0.18:   # never a dead-straight bounce (avoids endless vertical loops)
+                ang = 0.18 if (ang > 0 or (ang == 0 and self.vx >= 0)) else -0.18
             self.vx, self.vy = math.sin(ang) * self.speed, -abs(math.cos(ang) * self.speed)
             self.by = PADDLE_Y - BALL_R - 1
         # bricks
@@ -137,7 +139,6 @@ class BrickBop(MinigameBase):
             for y in range(0, H, 4):
                 k = y / H
                 pygame.draw.rect(bg, (int(30 + 20 * k), int(24 + 10 * k), int(60 + 30 * k)), (0, y, W, 4))
-            BrickBop._bg = bg
             self._bg = bg
         t.blit(self._bg, (0, 0))
         t.blit(self._bricks(), (0, 0))

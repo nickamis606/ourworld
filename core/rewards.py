@@ -5,9 +5,9 @@ _RULES = {
     "snake": (3, 40, 2, 5),
     "pet_dash": (4, 30, 3, 5),
     "frogger": (3, 35, 2, 5),
-    "brick_bop": (12, 35, 10, 5),
+    "brick_bop": (15, 35, 15, 5),
     "pet_pairs": (6, 35, 5, 5),
-    "mole_pop": (8, 35, 5, 5),
+    "mole_pop": (12, 35, 8, 5),
 }
 ENERGY_COST = 8  # playing an arcade game is tiring
 

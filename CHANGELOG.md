@@ -1,5 +1,43 @@
 # Changelog
 
+## [Unreleased] - 2026-10-17 (round 2) - more places, more arcade
+
+### Added
+- Three new places on a 3x3 neighborhood map (third row), each with a code-drawn
+  backdrop built once and cached, a little ambient animation, and its own action:
+  - **Sunny Pond** - *Swim*: +28 Clean, +12 Joy, -10 Energy, -5 Food (needs 15 energy).
+    Play here gets a "Splashy bonus"; sand makes Clean decay 1.4x faster. Duck + ripples.
+  - **Bookworm Library** - *Read*: +14 Joy, +6 Energy, 30 s cooldown. Rest gets a
+    "Quiet-corner bonus"; energy decays 0.7x here. Lamp flicker + drifting page.
+  - **Paws & Claws Spa** - *Pamper* (18 coins): +45 Clean, +20 Energy, +10 Joy.
+    Clean gets a "Spa bonus". Rising steam.
+- Place actions are data (`core/world.PLACE_ACTIONS`) applied by
+  `GameState.can_place_action/perform_place_action` (pure Python, same result dict
+  shape as care actions). Cooldowns tick in `tick()` and `apply_offline()`.
+- Three new arcade games (all D-pad + A, 30 FPS, one cached background blit/frame):
+  - **Brick Bop** - breakout: hold Left/Right, A launches; 50 bricks, waves, 3 lives.
+  - **Pet Pairs** - 4x4 memory match of pet icons, 75 s; 25/pair + 2 per second left.
+  - **Mole Pop** - 3x3 whack-a-mole, 40 s; golden moles +30, misses stun 0.4 s.
+- `minigames/base.py` `MinigameBase`: shared state (running/game_over/score/held),
+  action->key mapping, cached score text (`CachedFont` over `engine.assets.text`),
+  HUD helper and standalone `run()`. Snake, Pet Dash and Frogger now use it.
+- Arcade picker is a 3x2 cabinet grid (Left/Right +-1, Up/Down +-row); the arcade
+  place shows one **Games** tile instead of a tile per game.
+- 20 new tests (56 total): map grid completeness, place gating/costs/cooldowns,
+  bonuses, decay multipliers, save compat for `cooldowns`, rewards for all 6 games,
+  headless runs of every game, place actions via keys, map travel to the third row,
+  arcade picker navigation, Brick Bop paddle follows held input.
+
+### Changed
+- Saves gain an optional `pet.cooldowns` dict. Older saves (no field) load with no
+  cooldowns; junk values are dropped. Schema version unchanged (2).
+- Map cards are shorter (180x112) to fit three rows on 640x480.
+- Rewards: zero score still pays 0 coins / 0 joy and costs 4 energy for every game.
+
+### Fixed
+- Brick Bop could fall into an endless dead-vertical bounce; paddle hits now keep a
+  minimum angle. Its background was rebuilt every frame (now cached per instance).
+
 ## [Unreleased] - 2026-10-17 - "make it actually play" pass (branch `improve/2026-10-17`)
 
 Based on `refactor-pygame-standards` (the newest work; `main` is ~100 commits behind).

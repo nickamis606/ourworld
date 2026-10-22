@@ -72,7 +72,7 @@ def test_map_travel_to_park(game):
     assert game.scene_name == "main" and game.state.pet.location == "park"
 
 
-@pytest.mark.parametrize("which", ["snake", "pet_dash", "frogger"])
+@pytest.mark.parametrize("which", ["snake", "pet_dash", "frogger", "brick_bop", "pet_pairs", "mole_pop"])
 def test_minigames_run_and_pay_out(game, which):
     adopt(game)
     game.state.pet.needs.energy = 80
@@ -92,6 +92,74 @@ def test_minigames_run_and_pay_out(game, which):
     run(game, 2, key(pygame.K_ESCAPE))
     run(game, 20)
     assert game.scene_name == "main"
+
+
+@pytest.mark.parametrize("place,action", [("pond", "swim"), ("library", "read"), ("spa", "pamper")])
+def test_new_place_action_via_keys(game, place, action):
+    adopt(game)
+    st = game.state
+    st.pet.location = place
+    st.pet.coins = 100
+    st.pet.needs.cleanliness = 30
+    st.pet.needs.happiness = 30
+    st.pet.needs.energy = 60
+    game.scene.on_enter(arrived=True)
+    run(game, 5)
+    before = st.pet.care_count
+    assert game.scene.bar.focus_id("place:" + action) is not False
+    assert game.scene.bar.current.id == "place:" + action
+    run(game, 60, key(pygame.K_SPACE))
+    assert st.pet.care_count == before + 1
+    from sprites import backdrops
+    assert backdrops.get(place).get_size() == (640, 480)
+    assert backdrops.get(place) is backdrops.get(place)  # built once, cached
+
+
+def test_map_travel_to_pond_and_back_row(game):
+    adopt(game)
+    run(game, 2, key(pygame.K_m))
+    run(game, 2, key(pygame.K_DOWN))
+    run(game, 2, key(pygame.K_DOWN))
+    assert game.scene.map.selected == "pond"
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 100)
+    assert game.scene_name == "main" and game.state.pet.location == "pond"
+    run(game, 2, key(pygame.K_m))
+    run(game, 2, key(pygame.K_DOWN))   # wraps to the top row
+    assert game.scene.map.selected == "home"
+
+
+def test_arcade_place_opens_picker_with_all_games(game):
+    adopt(game)
+    from minigames import GAME_INFO
+    game.state.pet.location = "arcade"
+    game.state.pet.needs.energy = 80
+    game.scene.on_enter()
+    game.scene.bar.focus_id("games")
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 30)
+    assert game.scene_name == "arcade" and game.scene.phase == "pick"
+    seen = set()
+    from scenes.arcade_scene import ORDER
+    for _ in range(len(GAME_INFO)):
+        seen.add(ORDER[game.scene.index])
+        run(game, 1, key(pygame.K_RIGHT))
+    assert seen == set(GAME_INFO) and len(seen) >= 6
+    run(game, 1, key(pygame.K_DOWN))
+    assert game.scene.index == 3
+
+
+def test_brick_bop_paddle_follows_held_input(game):
+    adopt(game)
+    game.state.pet.needs.energy = 80
+    game.switch("arcade", game="brick_bop")
+    run(game, 20)
+    mg = game.scene.minigame
+    x0 = mg.paddle_x
+    game.step(1 / 30, [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT, mod=0, unicode="", scancode=0)])
+    run(game, 15)
+    assert mg.paddle_x > x0
+    game.step(1 / 30, [pygame.event.Event(pygame.KEYUP, key=pygame.K_RIGHT, mod=0, unicode="", scancode=0)])
 
 
 def test_gamepad_hat_and_buttons(game):

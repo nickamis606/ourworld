@@ -142,7 +142,7 @@ def test_mood_and_wants(gs):
     assert gs.wants() == "hunger" and gs.mood() != "happy"
 
 
-@pytest.mark.parametrize("game", ["snake", "pet_dash", "frogger"])
+@pytest.mark.parametrize("game", ["snake", "pet_dash", "frogger", "brick_bop", "pet_pairs", "mole_pop"])
 def test_minigame_rewards(game):
     zero = minigame_reward(game, 0)
     assert zero["coins"] == 0 and zero["happiness"] == 0 and zero["energy"] < 0
@@ -232,3 +232,104 @@ def test_offline_decay_is_gentle(gs):
     gs.pet.needs = Needs(90, 90, 90, 90)
     gs.apply_offline(7 * 24 * 3600)
     assert gs.pet.needs.hunger >= 20  # hungry, never starved
+
+
+# ----------------------------------------------------------- new places
+def test_map_grid_is_complete_and_unique():
+    cells = [d["map"] for d in world.LOCATIONS.values()]
+    assert len(cells) == len(set(cells)) == world.MAP_COLS * world.MAP_ROWS
+    for c in range(world.MAP_COLS):
+        for r in range(world.MAP_ROWS):
+            assert world.location_at(c, r) in world.LOCATIONS
+
+
+def test_every_place_action_lives_somewhere():
+    for key, spec in world.PLACE_ACTIONS.items():
+        assert spec["location"] in world.LOCATIONS
+        assert key in world.place_actions_for(spec["location"])
+    for loc in ("pond", "library", "spa"):
+        assert world.place_actions_for(loc), loc
+
+
+def test_place_action_only_at_its_place(gs):
+    gs.pet.location = "home"
+    gs.pet.needs.cleanliness = 30
+    r = gs.perform_place_action("swim")
+    assert not r["success"] and "Sunny Pond" in r["msg"]
+    assert gs.perform_place_action("nope")["success"] is False
+
+
+def test_swim_cleans_and_tires(gs):
+    gs.pet.location = "pond"
+    gs.pet.needs = Needs(60, 50, 60, 30)
+    r = gs.perform_place_action("swim")
+    assert r["success"]
+    assert gs.pet.needs.cleanliness > 50 and gs.pet.needs.happiness > 55 and gs.pet.needs.energy < 55
+    gs.pet.needs.energy = 10
+    gs.pet.needs.cleanliness = 30
+    assert not gs.perform_place_action("swim")["success"]  # too tired to swim
+    gs.pet.needs = Needs(60, 50, 60, 99)
+    assert not gs.perform_place_action("swim")["success"]  # already clean
+
+
+def test_read_has_cooldown_that_ticks_down(gs):
+    gs.pet.location = "library"
+    gs.pet.needs = Needs(80, 40, 50, 80)
+    assert gs.perform_place_action("read")["success"]
+    r = gs.perform_place_action("read")
+    assert not r["success"] and "break" in r["msg"]
+    for _ in range(world.PLACE_ACTIONS["read"]["cooldown"] + 1):
+        gs.tick(1.0)      # tick() clamps big dt, so step like the game loop does
+    assert "read" not in gs.pet.cooldowns
+    assert gs.perform_place_action("read")["success"]
+
+
+def test_spa_costs_coins(gs):
+    gs.pet.location = "spa"
+    gs.pet.needs = Needs(80, 50, 30, 20)
+    cost = world.PLACE_ACTIONS["pamper"]["cost"]
+    gs.pet.coins = cost - 1
+    r = gs.perform_place_action("pamper")
+    assert not r["success"] and "coins" in r["msg"]
+    gs.pet.coins = cost + 5
+    r = gs.perform_place_action("pamper")
+    assert r["success"] and gs.pet.coins == 5 and r["cost"] == cost
+    assert gs.pet.needs.cleanliness >= 60 and gs.pet.needs.energy >= 45
+
+
+def test_new_place_bonuses_and_decay(gs):
+    gs.pet.location = "spa"
+    gs.pet.needs = Needs(80, 50, 50, 20)
+    r = gs.perform_care_action("clean")
+    assert r["success"] and "Spa bonus" in r["msg"]
+    lib = GameState(save_path=gs.save_manager.path + ".b")
+    lib.pet.location = "library"
+    gs.pet.location = "park"
+    gs.pet.needs = Needs(80, 80, 80, 80)
+    lib.pet.needs = Needs(80, 80, 80, 80)
+    for _ in range(60):
+        gs.tick(1.0)
+        lib.tick(1.0)
+    assert lib.pet.needs.energy > gs.pet.needs.energy  # library is restful
+
+
+def test_cooldowns_survive_save_and_old_saves_load(tmp_path):
+    path = str(tmp_path / "s.json")
+    a = GameState(save_path=path)
+    a.new_game("Ivy", 1)
+    a.pet.location = "library"
+    a.pet.needs.happiness = 30
+    assert a.perform_place_action("read")["success"]
+    assert a.save()
+    b = GameState(save_path=path)
+    assert b.pet.location == "library" and b.pet.cooldowns.get("read", 0) > 0
+    # a round-1 save has no cooldowns field at all
+    data = json.loads(open(path).read())
+    del data["pet"]["cooldowns"]
+    data["pet"]["location"] = "spa"
+    open(path, "w").write(json.dumps(data))
+    c = GameState(save_path=path)
+    assert c.pet.cooldowns == {} and c.pet.location == "spa"
+    data["pet"]["cooldowns"] = {"read": "soon", "swim": -3}
+    open(path, "w").write(json.dumps(data))
+    assert GameState(save_path=path).pet.cooldowns == {}

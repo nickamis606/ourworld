@@ -125,6 +125,7 @@ def test_full_playthrough_reaches_ending(gs):
         if not lines:
             break
         seen.append(lines[0][1])
+    seen = [t for t in seen if "grew" not in t and "grown" not in t]   # growth stages
     assert len(seen) == 6 and "Pip" in " ".join(t for _, t in D.DIALOGUE["ending"]).replace("{pet}", "Pip")
     ok, why = gs.can_place_action("light")
     assert not ok and "already" in why
@@ -174,6 +175,7 @@ def test_daily_wishes_rotate_by_date(tmp_path):
     # deterministic: a second state on the same day picks the same wishes
     h = GameState(save_path=str(tmp_path / "e.json"), clock=lambda: now[0])
     h.story = StoryState.from_dict(g.story.to_dict())
+    h.pet = g.pet
     h.story.daily = {}
     h.story.ensure_daily(h)
     assert [t["id"] for t in h.story.daily["tasks"]] == [t["id"] for t in g.story.daily["tasks"]]

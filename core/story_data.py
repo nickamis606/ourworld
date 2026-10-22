@@ -370,3 +370,8 @@ DIALOGUE = {
     "post_idle": [[("", "{name} smiles. \"The whole town feels brighter now!\"")]],
     "locked": [("", "That place is still sleepy. Keep helping the townsfolk to wake it up!")],
 }
+
+# growth stage dialogue (round 4)
+from .pets import GROW_DIALOGUE as _GROW  # noqa: E402
+for _k, _v in _GROW.items():
+    DIALOGUE["grow_" + _k] = _v

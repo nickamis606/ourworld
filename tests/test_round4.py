@@ -214,3 +214,118 @@ def test_all_code_parses_as_python37():
         for f in files:
             if f.endswith(".py"):
                 ast.parse(open(os.path.join(base, f)).read(), feature_version=(3, 7))
+
+
+# ------------------------------------------------------- growth stages
+def test_growth_stages_follow_bond(tmp_path):
+    from core import pets
+    from core.story_data import BOND_LEVELS
+    gs = fresh(tmp_path)
+    assert gs.stage == "baby"
+    gs.add_bond(BOND_LEVELS[2] - gs.pet.bond_xp)   # level 3
+    gs.tick(1.0)
+    assert gs.stage == "kid" and gs.pet.stage_seen == "kid"
+    assert "grow_kid" in gs.story.dialogue
+    assert any("grew" in n for n in gs.story.notices)
+    n = gs.story.dialogue.count("grow_kid")
+    gs.tick(1.0)
+    assert gs.story.dialogue.count("grow_kid") == n      # celebrated once
+    gs.add_bond(BOND_LEVELS[4] - gs.pet.bond_xp)
+    gs.tick(1.0)
+    assert gs.stage == "adult" and "grow_adult" in gs.story.dialogue
+    assert pets.stage_scale("baby") < pets.stage_scale("kid") < pets.stage_scale("adult") == 1.0
+
+
+def test_stage_sprites_and_accessories_draw(game):
+    from core.story_data import BOND_LEVELS
+    adopt(game)
+    heights = []
+    for lvl in (0, 2, 4):
+        game.state.pet.bond_xp = BOND_LEVELS[lvl]
+        game.state.pet.stage_seen = game.state.stage
+        run(game, 2)
+        heights.append(game.scene.pet.height)
+    assert heights[0] < heights[1] < heights[2] == 128
+
+
+# --------------------------------------------------------- personality
+def test_new_pet_trait_choice_and_effects(tmp_path):
+    from core.pets import TRAITS
+    gs = GameState(save_path=str(tmp_path / "t.json"), autoload=False)
+    gs.new_game("Milo", 1, "sleepy")
+    assert gs.pet.trait == "sleepy"
+    assert gs.decay_multipliers()["energy"] == pytest.approx(TRAITS["sleepy"]["mult"]["energy"])
+    gs.pet.needs.energy = 40
+    before = gs.pet.needs.happiness
+    res = gs.perform_care_action("rest")
+    assert res["liked"] and "loves" in res["msg"]
+    assert gs.pet.needs.happiness - before == pytest.approx(6, abs=0.01)
+    gs.new_game("Luna", 2, "picky")
+    gs.pet.needs.hunger = 40
+    r = gs.perform_care_action("feed")
+    assert r["deltas"]["hunger"] == 25 - 7 and "sniffs" in r["msg"]
+
+
+def test_trait_shapes_daily_wishes(tmp_path):
+    from tests import story_script as S
+    for trait in ("playful", "sleepy", "picky", "curious"):
+        gs = GameState(save_path=str(tmp_path / f"{trait}.json"), autoload=False, clock=lambda: 1792224000.0)
+        gs.new_game("Pip", 0, trait)
+        S.play_to_end(gs)
+        ids = [t["id"] for t in gs.story.daily["tasks"]]
+        assert any(i in gs.favorite_wishes() for i in ids), (trait, ids)
+
+
+def test_title_lets_you_pick_a_personality(game):
+    run(game, 2, key(pygame.K_SPACE))
+    assert game.scene.mode == "trait"
+    run(game, 1, key(pygame.K_DOWN))     # Sleepy
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 20)
+    assert game.scene_name == "main" and game.state.pet.trait == "sleepy"
+
+
+def test_old_save_gets_a_stable_trait(tmp_path):
+    from core.pet_state import PetState
+    from core.pets import TRAITS
+    a = PetState.from_dict({"name": "Bubbles", "bond_xp": 200})
+    b = PetState.from_dict({"name": "Bubbles"})
+    assert a.trait in TRAITS and a.trait == b.trait
+    assert a.stage_seen == "adult"     # no surprise growth cut-scene after migrating
+
+
+# -------------------------------------------------------- gentle stakes
+def test_mopey_comes_and_goes_gently(tmp_path):
+    gs = fresh(tmp_path)
+    xp = gs.pet.bond_xp
+    for n in ("hunger", "happiness", "energy", "cleanliness"):
+        setattr(gs.pet.needs, n, 20)
+    gs.tick(1.0)
+    assert gs.pet.mopey and gs.idle_reaction(0) == "rain"
+    assert gs.pet.bond_xp == xp          # never takes anything away
+    for n in ("hunger", "happiness", "energy", "cleanliness"):
+        setattr(gs.pet.needs, n, 35)     # better, but not yet perked up (hysteresis)
+    gs.tick(1.0)
+    assert gs.pet.mopey
+    for n in ("hunger", "happiness", "energy", "cleanliness"):
+        setattr(gs.pet.needs, n, 60)
+    gs.tick(1.0)
+    assert not gs.pet.mopey and gs.pet.bond_xp > xp
+    assert any("perked" in m for m in gs.story.notices)
+
+
+def test_mopey_dims_the_town_and_droops(game):
+    from sprites import backdrops
+    adopt(game)
+    p = game.state.pet
+    for n in ("hunger", "happiness", "energy", "cleanliness"):
+        setattr(p.needs, n, 10)
+    run(game, 40)
+    assert p.mopey
+    loc = p.location
+    period = game.state.time_of_day()
+    bright = backdrops.get(loc, period, "", "", "", False)
+    dim = backdrops.get(loc, period, "", "", "", True)
+    c1, c2 = bright.get_at((320, 200)), dim.get_at((320, 200))
+    assert sum(c2[:3]) < sum(c1[:3])
+    game.scene.draw(game.screen)

@@ -3,6 +3,9 @@ import math
 
 import pygame
 
+import random
+
+from core.pets import TRAITS, TRAIT_KEYS
 from core.roster import PET_ROSTER, roster_entry
 from engine import assets
 from scenes.base_scene import BaseScene
@@ -40,6 +43,17 @@ class TitleScene(BaseScene):
 
     # -------------------------------------------------------------- input
     def handle_action(self, a):
+        if self.mode == "trait":
+            if a in ("UP", "DOWN"):
+                self.trait_menu.move(1 if a == "DOWN" else -1)
+                self.game.sfx("move")
+            elif a in ("A", "START"):
+                self.game.sfx("select")
+                t = self.trait_menu.selected
+                self._adopt(random.choice(TRAIT_KEYS) if t == "surprise" else t)
+            elif a == "B":
+                self.mode = "select"
+            return
         if self.mode == "menu":
             if a in ("UP", "DOWN"):
                 self.menu.move(1 if a == "DOWN" else -1)
@@ -67,6 +81,12 @@ class TitleScene(BaseScene):
     def handle_event(self, e):
         if e.type != pygame.MOUSEBUTTONDOWN or e.button != 1:
             return
+        if self.mode == "trait":
+            i = self.trait_menu.hit(e.pos, (420, 250))
+            if i is not None:
+                self.trait_menu.index = i
+                self.handle_action("A")
+            return
         if self.mode == "menu":
             i = self.menu.hit(e.pos, (320, 370))
             if i is not None:
@@ -83,9 +103,15 @@ class TitleScene(BaseScene):
         if self.state.has_save and not self.confirm_new:
             self.confirm_new = True   # starting over replaces the old pet: ask twice
             return
+        self.confirm_new = False
+        self.mode = "trait"
+        self.trait_menu = Menu("", [(k, TRAITS[k]["name"]) for k in TRAIT_KEYS] + [("surprise", "Surprise me!")],
+                               width=300)
+
+    def _adopt(self, trait):
         entry = PET_ROSTER[self.index]
-        self.state.new_game(entry["name"], entry["id"])
-        self.game.switch("main", message=f"Say hi to {entry['name']}! Try Feed and Play.")
+        self.state.new_game(entry["name"], entry["id"], trait)
+        self.game.switch("main", message=f"Say hi to {entry['name']}! {entry['name']} is {TRAITS[trait]['name']}.")
 
     def _cell(self, i):
         return pygame.Rect(GRID_X + (i % COLS) * (CELL_W + 10), GRID_Y + (i // COLS) * (CELL_H + 10), CELL_W, CELL_H)
@@ -115,6 +141,20 @@ class TitleScene(BaseScene):
             sp.draw(surf, {"dy": -10 * abs(math.sin(self.t * 3))})
             self.menu.draw(surf, (320, 370), veil=False, box=False)
             hint_bar(surf, [("D-pad", "Choose"), ("A", "OK")])
+            return
+        if self.mode == "trait":
+            entry = PET_ROSTER[self.index]
+            sub = assets.text(f"What is {entry['name']} like?", 28, (110, 70, 50), bold=True)
+            surf.blit(sub, sub.get_rect(center=(320, 100)))
+            sp = self.sprites[self.index]
+            sp.set_feet(130, 300)
+            sp.draw(surf, {"dy": -8 * abs(math.sin(self.t * 3))})
+            self.trait_menu.draw(surf, (420, 250), veil=False, box=False)
+            sel = self.trait_menu.selected
+            desc = TRAITS[sel]["desc"] if sel in TRAITS else "Let your pet decide!"
+            d = assets.text(desc, 20, (110, 70, 50))
+            surf.blit(d, d.get_rect(center=(320, 410)))
+            hint_bar(surf, [("D-pad", "Choose"), ("A", "Adopt"), ("B", "Back")])
             return
         sub = assets.text("Choose your companion", 28, (110, 70, 50), bold=True)
         surf.blit(sub, sub.get_rect(center=(320, 94)))

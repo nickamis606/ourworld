@@ -89,6 +89,10 @@ class Journal:
             pygame.draw.rect(surf, (240, 110, 150), (bar.x, bar.y, int(bar.w * into / need), bar.h), border_radius=4)
         else:
             pygame.draw.rect(surf, (240, 110, 150), bar, border_radius=4)
+        from core.pets import stage_label
+        who = " - ".join(x for x in (pet.name, state.trait_info["name"], stage_label(state.stage)) if x)
+        wt = assets.text(who, 15, (150, 110, 100), bold=True)
+        surf.blit(wt, (book.right - wt.get_width() - 16, 56))
         [self._story, self._stickers, self._friends][self.tab](surf, state)
         hint_bar(surf, [("L/R", "Tabs"), ("D-pad", "Look"), ("B", "Close")], y=458)
 

@@ -30,9 +30,12 @@ def _new_surface():
     return pygame.Surface((W, H)).convert() if pygame.display.get_surface() else pygame.Surface((W, H))
 
 
-def get(location: str, period: str = "day", variant: str = "") -> pygame.Surface:
+def get(location: str, period: str = "day", variant: str = "", season: str = "",
+        event: str = "", dim: bool = False, extras=()) -> pygame.Surface:
     """Opaque 640x480 backdrop, built once per (place, variant) and cached.
-    period 'evening'/'night' returns a tinted copy (also cached, LRU of 3)."""
+    period 'evening'/'night', a season, a calendar event or dim (mopey pet)
+    return a tinted/decorated copy (also cached, LRU of 3)."""
+    from sprites import seasons
     key = (location, variant)
     surf = _cache.get(key)
     if surf is None:
@@ -43,14 +46,25 @@ def get(location: str, period: str = "day", variant: str = "") -> pygame.Surface
         else:
             b(surf)
         _cache[key] = surf
-    if period not in TINTS:
+    outdoor_s = season if location in seasons.OUTDOOR_SEASONAL else ""
+    extras = tuple(sorted(extras))
+    if period not in TINTS and not outdoor_s and not event and not dim and not extras:
         return surf
-    tkey = (location, variant, period)
+    tkey = (location, variant, period, outdoor_s, event, dim, extras)
     t = _tinted.pop(tkey, None)
     if t is None:
         t = surf.copy()
-        out, inside = TINTS[period]
-        t.fill(inside if location in INDOOR else out, special_flags=pygame.BLEND_MULT)
+        seasons.paint_props(t, location, outdoor_s, event, extras)
+        tint = (255, 255, 255)
+        if period in TINTS:
+            out, inside = TINTS[period]
+            tint = inside if location in INDOOR else out
+        if outdoor_s:
+            tint = seasons.mul(tint, seasons.SEASON_TINT[outdoor_s])
+        if dim:
+            tint = seasons.mul(tint, seasons.DIM_TINT)
+        if tint != (255, 255, 255):
+            t.fill(tint, special_flags=pygame.BLEND_MULT)
         if period == "night" and location not in INDOOR:
             rng = random.Random(len(location))
             for _ in range(40):

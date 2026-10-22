@@ -22,6 +22,9 @@ class PetState:
     care_count: int = 0
     cooldowns: Dict[str, float] = field(default_factory=dict)  # place action -> secs left
     bond_xp: int = 0
+    trait: str = ""                     # personality (core.pets.TRAITS); "" -> rolled on load
+    stage_seen: str = "baby"            # last growth stage we celebrated
+    mopey: bool = False                 # gentle stakes: low needs for a while
 
     # -- derived --------------------------------------------------------
     @property
@@ -42,6 +45,9 @@ class PetState:
             "care_count": self.care_count,
             "bond_xp": self.bond_xp,
             "cooldowns": {k: round(v, 2) for k, v in self.cooldowns.items() if v > 0},
+            "trait": self.trait,
+            "stage_seen": self.stage_seen,
+            "mopey": bool(self.mopey),
         }
 
     @classmethod
@@ -89,6 +95,14 @@ class PetState:
             pet.bond_xp = max(0, int(d.get("bond_xp", 0) or 0))
         except (TypeError, ValueError):
             pet.bond_xp = 0
+        from .pets import TRAITS, STAGE_KEYS, roll_trait, stage_for
+        from .story import bond_level
+        t = d.get("trait")
+        pet.trait = t if t in TRAITS else roll_trait(pet.name)
+        st = d.get("stage_seen")
+        # older saves: treat the current stage as already celebrated
+        pet.stage_seen = st if st in STAGE_KEYS else stage_for(bond_level(pet.bond_xp))
+        pet.mopey = bool(d.get("mopey", False))
         cds = d.get("cooldowns") or {}
         if isinstance(cds, dict):
             pet.cooldowns = {str(k): float(v) for k, v in cds.items()

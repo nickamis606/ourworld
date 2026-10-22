@@ -365,7 +365,12 @@ class StoryState:
             return
         rng = random.Random("ourworld-" + today)
         pool = [t for t in D.DAILY_POOL if t["needs"] in self.unlocked]
-        picks = rng.sample(pool, min(D.DAILY_COUNT, len(pool)))
+        # personality: one of the pet's favorite wishes is always in the list
+        favs = getattr(gs, "favorite_wishes", lambda: [])()
+        fav = [t for t in pool if t["id"] in favs]
+        first = [rng.choice(fav)] if fav else []
+        rest = [t for t in pool if t not in first]
+        picks = first + rng.sample(rest, min(D.DAILY_COUNT - len(first), len(rest)))
         self.daily = {"date": today, "bonus": False,
                       "tasks": [{"id": t["id"], "text": t["text"], "count": t["count"],
                                  "progress": 0, "done": False} for t in picks]}

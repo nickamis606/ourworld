@@ -19,6 +19,8 @@ from sprites.action_animator import ActionAnimator
 from sprites.fx import Effects, pet_pose, NEED_COLORS
 from sprites.pet_sprite import PetSprite
 from sprites import npc_sprite
+from sprites import pet_extras, seasons
+from core import pets as petsmod
 from ui.dialogue_box import DialogueBox
 from ui.journal import Journal
 from ui.settings_menu import SettingsMenu
@@ -87,13 +89,14 @@ class MainScene(BaseScene):
         self.hide_hud = False
         self._npc_flip = {}
         self._music_t = 0.0
+        self._stage = None
+        self._emote = None       # (kind, t)
+        self._emote_tick = 0
+        self._emote_wait = 6.0
 
     # ---------------------------------------------------------- lifecycle
     def on_enter(self, **kwargs):
-        sp = self.state.pet.species_id
-        if self.pet is None or self._species != sp:
-            self.pet = PetSprite(roster_entry(sp), height=128)
-            self._species = sp
+        self._ensure_sprite()
         self.pet.set_feet(*FEET.get(self.state.pet.location, DEFAULT_FEET))
         self.map.hide()
         self.journal.hide()
@@ -341,7 +344,7 @@ class MainScene(BaseScene):
     def open_pause(self):
         opts = [("resume", "Resume"), ("journal", "Journal"), ("settings", "Settings"),
                 ("photo", "Take a photo"), ("save", "Save now")]
-        opts.append(("pets", "Pets...") if self.state.story.finished else ("newpet", "New pet..."))
+        opts.append(("newpet", "New pet..."))
         opts.append(("quit", "Quit game"))
         self.pause = Menu("Paused", opts)
         self.sfx("select")
@@ -481,6 +484,8 @@ class MainScene(BaseScene):
         if self._music_t > 2.0:
             self._music_t = 0.0
             self._update_music()
+        self._ensure_sprite()
+        self._update_emote(dt)
         self.pet.update(dt)
         self.animator.update(dt)
         self.fx.update(dt)
@@ -495,20 +500,55 @@ class MainScene(BaseScene):
         if int(self.t * 4) != int((self.t - dt) * 4):
             self.refresh_items()
 
+    def _ensure_sprite(self):
+        sp = self.state.pet.species_id
+        stage = self.state.stage
+        if self.pet is None or self._species != sp or self._stage != stage:
+            old_feet = tuple(self.pet.feet) if self.pet is not None else None
+            self.pet = PetSprite(roster_entry(sp), height=int(128 * petsmod.stage_scale(stage)))
+            self._species, self._stage = sp, stage
+            if old_feet:
+                self.pet.set_feet(*old_feet)
+
+    def _update_emote(self, dt):
+        if self._emote:
+            kind, t = self._emote
+            t += dt
+            self._emote = (kind, t) if t < 1.8 else None
+            return
+        self._emote_wait -= dt
+        if self._emote_wait <= 0 and not self.anim_kind and not self.overlay_open:
+            self._emote_tick += 1
+            kind = self.state.idle_reaction(self._emote_tick)
+            self._emote = (kind, 0.0)
+            self._emote_wait = 5.0 if self.state.pet.mopey else 8.0
+            if kind == "bounce":
+                self._start_anim("play", 0.5)
+
     # --------------------------------------------------------------- draw
     def draw(self, surf):
         s = self.state
         p = s.pet
         loc = p.location
-        surf.blit(backdrops.get(loc, s.time_of_day(), self._variant(loc)), (0, 0))
+        season = s.season()
+        surf.blit(backdrops.get(loc, s.time_of_day(), self._variant(loc), season,
+                                s.current_event() or "", p.mopey, s.backdrop_extras(loc)), (0, 0))
         backdrops.draw_ambient(surf, loc, self.t)
+        seasons.draw_particles(surf, loc, season, self.t)
         self._draw_npcs(surf, loc)
         if loc == "backyard":
             self._draw_garden(surf)
         if loc == "home" and p.home_decorated:
             self._draw_decor(surf)
         pose = pet_pose(self.anim_kind, min(1.0, self.anim_t / self.anim_dur)) if self.anim_kind else None
+        if pose is None and p.mopey:
+            pose = {"dy": 3.0, "sy": 0.93, "sx": 1.05, "angle": 3 * math.sin(self.t * 0.8)}
         self.pet.draw(surf, pose)
+        pet_extras.draw_accessory(surf, self.pet.rect, self._stage, self.t)
+        if self._emote and not self.hide_hud:
+            kind, et = self._emote
+            r = self.pet.rect
+            pet_extras.draw_emote(surf, r.left + 4, r.top - 6, kind, et / 1.8)
         if self.animator.is_active:
             self.animator.draw(surf, int(self.pet.feet.x), int(self.pet.feet.y - self.pet.height * 0.55))
         if self.hide_hud:

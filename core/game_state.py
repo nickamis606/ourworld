@@ -19,6 +19,7 @@ from .settings import Settings
 from .story import StoryState, today_str, bond_level
 from . import story_data
 from . import calendar
+from . import pets as petsmod
 from .world import (LOCATIONS, PLANTS, SEED_TO_PLANT, MAX_STAGE, GARDEN_SLOTS,
                     DECORATION_SECS, FLOWERS_TO_DECORATE, PLACE_ACTIONS)
 
@@ -75,6 +76,14 @@ class GameState:
     def season(self) -> str:
         return calendar.season_of(self.today_date())
 
+    def current_event(self):
+        """Key of the calendar event running today (core.calendar.EVENTS) or None."""
+        return calendar.active_event(self.today_date())
+
+    def backdrop_extras(self, location: str) -> tuple:
+        """Things the player built that show up in a place (e.g. the snowman)."""
+        return ()
+
     def time_of_day(self) -> str:
         """'day' | 'evening' | 'night' from the local clock (OURWORLD_HOUR overrides)."""
         hour = os.environ.get("OURWORLD_HOUR")
@@ -123,7 +132,53 @@ class GameState:
         return mult
 
     def _extra_multipliers(self, mult: dict) -> None:
-        """Hook for personality / seasons (filled in by later features)."""
+        """Personality changes how fast needs drop."""
+        tr = petsmod.TRAITS.get(self.pet.trait)
+        if tr:
+            for k, v in tr["mult"].items():
+                mult[k] = mult.get(k, 1.0) * v
+
+    # ------------------------------------------------- growth / personality
+    @property
+    def stage(self) -> str:
+        return petsmod.stage_for(self.bond_level)
+
+    @property
+    def trait_info(self) -> dict:
+        return petsmod.TRAITS.get(self.pet.trait, petsmod.NO_TRAIT)
+
+    def favorite_wishes(self) -> list:
+        return list(self.trait_info["wishes"])
+
+    def _check_growth(self) -> None:
+        st = self.stage
+        order = petsmod.STAGE_KEYS
+        if order.index(st) > order.index(self.pet.stage_seen if self.pet.stage_seen in order else "baby"):
+            self.pet.stage_seen = st
+            self.story.dialogue.append("grow_" + st)
+            self.story.notices.append(f"{self.pet.name} grew into a {petsmod.stage_label(st)}!")
+
+    def _check_mopey(self) -> None:
+        was = self.pet.mopey
+        now = petsmod.next_mopey(was, self.pet.needs.average(), self.pet.needs.lowest()[1])
+        if now != was:
+            self.pet.mopey = now
+            if now:
+                self.story.notices.append(f"{self.pet.name} feels mopey. A little care will help!")
+            else:
+                self.story.notices.append(f"{self.pet.name} perked right up! Thank you!")
+                self.add_bond(3)
+
+    def _liked(self, action: str, deltas: dict) -> bool:
+        """Apply personality likes to an action's deltas. Returns True if liked."""
+        if action in self.trait_info["likes"]:
+            for k, v in petsmod.LIKE_BONUS.items():
+                deltas[k] = deltas.get(k, 0) + v
+            return True
+        return False
+
+    def idle_reaction(self, tick: int) -> str:
+        return petsmod.reaction(self.stage, self.pet.trait, self.mood(), self.pet.mopey, tick)
 
     def tick(self, dt: float) -> None:
         """Advance the simulation by dt seconds (call every frame)."""
@@ -141,6 +196,8 @@ class GameState:
         if self._story_timer >= 1.0:
             self._story_timer = 0.0
             self.story.refresh(self)
+            self._check_mopey()
+            self._check_growth()
         self._autosave_timer += dt
         if self._autosave_timer >= AUTOSAVE_EVERY:
             self._autosave_timer = 0.0
@@ -276,9 +333,15 @@ class GameState:
             for k, v in b[1].items():
                 deltas[k] = deltas.get(k, 0) + v
             bonus = b[2]
+        liked = self._liked(action, deltas)
+        picky = action == "feed" and self.pet.trait == "picky"
+        if picky:
+            deltas["hunger"] -= petsmod.PICKY_FEED_PENALTY
         applied = self.pet.needs.apply(deltas)
         self.pet.care_count += 1
         self._event("care", action)
+        if liked:
+            self.add_bond(1)
         self.trigger_auto_save()
         msg = bonus or {
             "feed": f"Yum! {self.pet.name} loved that.",
@@ -286,8 +349,12 @@ class GameState:
             "clean": f"{self.pet.name} is all sparkly.",
             "rest": f"{self.pet.name} feels refreshed.",
         }[action]
+        if liked:
+            msg = (bonus + " " if bonus else "") + f"{self.pet.name} loves this!"
+        elif picky and not bonus:
+            msg = f"{self.pet.name} sniffs it first... then nibbles."
         return {"success": True, "msg": msg, "deltas": applied, "bonus": bonus,
-                "extra": 10 if bonus else 0}
+                "extra": 10 if bonus else 0, "liked": liked}
 
     # ------------------------------------------------------- place actions
     def can_place_action(self, key: str) -> tuple:
@@ -327,7 +394,9 @@ class GameState:
             return {"success": False, "msg": why, "deltas": {}}
         spec = PLACE_ACTIONS[key]
         self.spend_coins(spec["cost"])
-        applied = self.pet.needs.apply(spec["deltas"])
+        deltas = dict(spec["deltas"])
+        liked = self._liked(key, deltas)
+        applied = self.pet.needs.apply(deltas)
         if spec["cooldown"]:
             self.pet.cooldowns[key] = float(spec["cooldown"])
         self.pet.care_count += 1
@@ -336,6 +405,9 @@ class GameState:
         if key == "explore":
             found = self._explore_find()
             msg += " " + found
+        if liked:
+            msg = msg.rstrip() + " (loves it!)"
+            self.add_bond(1)
         self._event("place", key)
         self.trigger_auto_save()
         return {"success": True, "msg": msg, "deltas": applied, "cost": spec["cost"],
@@ -453,8 +525,10 @@ class GameState:
     def load(self) -> bool:
         return self.save_manager.load()
 
-    def new_game(self, name: str, species_id: int) -> None:
-        self.pet = PetState(name=name, species_id=species_id)
+    def new_game(self, name: str, species_id: int, trait: str | None = None) -> None:
+        if trait not in petsmod.TRAITS:
+            trait = petsmod.roll_trait(name)   # UI "Surprise me" passes a random one
+        self.pet = PetState(name=name, species_id=species_id, trait=trait)
         self.story = StoryState.new_game()
         self.story.refresh(self)
         self._has_save = True

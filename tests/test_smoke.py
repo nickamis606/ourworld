@@ -41,7 +41,9 @@ def unlock_all(g):
 
 
 def adopt(g, intro=False):
-    run(g, 2, key(pygame.K_SPACE))
+    run(g, 2, key(pygame.K_SPACE))      # pick the species
+    if g.scene_name == "title" and g.scene.mode == "trait":
+        run(g, 2, key(pygame.K_SPACE))  # personality: first entry (Playful)
     run(g, 20)
     assert g.scene_name == "main"
     if not intro:

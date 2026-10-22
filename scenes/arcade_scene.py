@@ -14,6 +14,7 @@ from ui.icons import icon
 from ui.menu import Menu
 
 ORDER = list(GAME_INFO)
+PICK_COLS = 3
 END_DELAY = 0.9  # let the crash/game-over moment land before the card
 
 
@@ -70,10 +71,13 @@ class ArcadeScene(BaseScene):
     # -------------------------------------------------------------- input
     def handle_action(self, a):
         if self.phase == "pick":
-            if a in ("LEFT", "UP"):
-                self.index = (self.index - 1) % len(ORDER)
-            elif a in ("RIGHT", "DOWN"):
-                self.index = (self.index + 1) % len(ORDER)
+            n = len(ORDER)
+            if a == "LEFT":
+                self.index = (self.index - 1) % n
+            elif a == "RIGHT":
+                self.index = (self.index + 1) % n
+            elif a in ("UP", "DOWN"):
+                self.index = (self.index + PICK_COLS) % n if a == "DOWN" else (self.index - PICK_COLS) % n
             elif a in ("A", "START"):
                 self.toast = None
                 self._start(ORDER[self.index])
@@ -127,6 +131,8 @@ class ArcadeScene(BaseScene):
         self.t += dt
         # needs do not decay while a minigame runs (fair play)
         if self.phase == "play":
+            # continuous-control games (paddles) read held directions
+            self.minigame.held = {a for a in self.game.input.held if a in ("UP", "DOWN", "LEFT", "RIGHT")}
             self.minigame.update(dt)
             over = getattr(self.minigame, "game_over", False) or not getattr(self.minigame, "running", True)
             if over:
@@ -138,7 +144,8 @@ class ArcadeScene(BaseScene):
 
     # --------------------------------------------------------------- draw
     def _cab_rect(self, i):
-        return pygame.Rect(60 + i * 180, 120, 160, 230)
+        c, r = i % PICK_COLS, i // PICK_COLS
+        return pygame.Rect(45 + c * 190, 112 + r * 136, 170, 124)
 
     def draw(self, surf):
         if self.phase in ("play", "paused", "result") and self.minigame:
@@ -164,27 +171,25 @@ class ArcadeScene(BaseScene):
                 r = r.move(0, -8 + int(3 * math.sin(self.t * 4)))
             c = info["color"]
             pygame.draw.rect(surf, tuple(v // 2 for v in c), r, border_radius=14)
-            pygame.draw.rect(surf, c, (r.x + 8, r.y + 8, r.w - 16, 34), border_radius=8)
-            name = assets.text(info["name"], 28, (255, 255, 255), bold=True)
-            surf.blit(name, name.get_rect(center=(r.centerx, r.y + 25)))
-            screen = pygame.Rect(r.x + 16, r.y + 52, r.w - 32, 100)
-            pygame.draw.rect(surf, (12, 16, 24), screen, border_radius=6)
-            ic = icon(key, 64)
-            surf.blit(ic, ic.get_rect(center=screen.center))
+            pygame.draw.rect(surf, c, (r.x + 6, r.y + 6, r.w - 12, 26), border_radius=8)
+            name = assets.text(info["name"], 24, (255, 255, 255), bold=True)
+            surf.blit(name, name.get_rect(center=(r.centerx, r.y + 19)))
+            scr = pygame.Rect(r.x + 12, r.y + 38, r.w - 24, 56)
+            pygame.draw.rect(surf, (12, 16, 24), scr, border_radius=6)
+            ic = icon(key, 44)
+            surf.blit(ic, ic.get_rect(center=scr.center))
             best = self.state.save_manager.get_high_score(key)
-            surf.blit(assets.text(f"Best: {best}", 22, (255, 240, 200)), (r.x + 18, r.y + 166))
-            pygame.draw.circle(surf, (255, 80, 80), (r.x + 50, r.y + 206), 9)
-            pygame.draw.circle(surf, (255, 220, 70), (r.x + 80, r.y + 206), 9)
-            pygame.draw.circle(surf, (90, 200, 255), (r.x + 110, r.y + 206), 9)
+            bt = assets.text(f"Best: {best}", 20, (255, 240, 200))
+            surf.blit(bt, bt.get_rect(center=(r.centerx, r.bottom - 15)))
             if sel:
                 pygame.draw.rect(surf, FOCUS, r.inflate(6, 6), 4, border_radius=16)
         how = GAME_INFO[ORDER[self.index]]["how"]
         t = assets.text(how, 21, (255, 255, 255))
-        surf.blit(t, t.get_rect(center=(320, 390)))
+        surf.blit(t, t.get_rect(center=(320, 400)))
         toast = getattr(self, "toast", None)
         if toast:
             tt = assets.text_outlined(toast, 24, (255, 220, 210), (140, 30, 40))
-            surf.blit(tt, tt.get_rect(center=(320, 420)))
+            surf.blit(tt, tt.get_rect(center=(320, 428)))
         hint_bar(surf, [("D-pad", "Choose"), ("A", "Play"), ("B", "Leave")])
 
     def _draw_result(self, surf):

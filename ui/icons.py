@@ -163,6 +163,68 @@ def _frog(s, n):
         pygame.draw.circle(s, (20, 20, 20), (int(n * x), int(n * .3)), max(1, n // 14))
 
 
+def _swim(s, n):  # waves + splash
+    for k in range(2):
+        y = n * (.55 + k * .2)
+        pts = [(n * x / 8, y + (n * .07 if x % 2 else -n * .07)) for x in range(9)]
+        pygame.draw.lines(s, (60, 160, 230) if k else (120, 200, 250), False, pts, max(2, n // 10))
+    pygame.draw.circle(s, (200, 235, 255), (int(n * .3), int(n * .25)), max(2, n // 10))
+    pygame.draw.circle(s, (200, 235, 255), (int(n * .55), int(n * .15)), max(2, n // 12))
+    pygame.draw.circle(s, (200, 235, 255), (int(n * .72), int(n * .3)), max(2, n // 9))
+
+
+def _book(s, n):  # open book
+    pygame.draw.polygon(s, (240, 235, 220), [(n * .5, n * .3), (n * .08, n * .2), (n * .08, n * .78), (n * .5, n * .88)])
+    pygame.draw.polygon(s, (250, 245, 232), [(n * .5, n * .3), (n * .92, n * .2), (n * .92, n * .78), (n * .5, n * .88)])
+    pygame.draw.line(s, (150, 90, 160), (n * .5, n * .3), (n * .5, n * .88), 2)
+    for k in range(3):
+        y = n * (.38 + k * .14)
+        pygame.draw.line(s, (170, 160, 150), (n * .16, y), (n * .42, y + n * .03), 1)
+        pygame.draw.line(s, (170, 160, 150), (n * .58, y + n * .03), (n * .84, y), 1)
+    pygame.draw.polygon(s, (150, 90, 160), [(n * .08, n * .78), (n * .5, n * .88), (n * .92, n * .78),
+                                           (n * .92, n * .86), (n * .5, n * .96), (n * .08, n * .86)])
+
+
+def _spa(s, n):  # rolled towel + bubbles
+    pygame.draw.rect(s, (250, 170, 210), (n * .1, n * .5, n * .62, n * .34), border_radius=max(2, n // 8))
+    pygame.draw.circle(s, (255, 220, 235), (int(n * .72), int(n * .67)), int(n * .17))
+    pygame.draw.circle(s, (230, 140, 190), (int(n * .72), int(n * .67)), int(n * .08))
+    for (x, y, r) in ((.25, .3, .12), (.48, .18, .09), (.68, .32, .1)):
+        pygame.draw.circle(s, (200, 235, 255), (int(n * x), int(n * y)), max(2, int(n * r)), max(1, n // 16))
+
+
+def _bricks(s, n):
+    cols = [(240, 90, 90), (250, 180, 60), (90, 200, 120)]
+    for r in range(3):
+        for c in range(3):
+            pygame.draw.rect(s, cols[r], (n * (.06 + c * .31), n * (.08 + r * .17), n * .27, n * .13))
+    pygame.draw.circle(s, (255, 255, 255), (int(n * .55), int(n * .7)), max(2, n // 10))
+    pygame.draw.rect(s, (120, 200, 255), (n * .25, n * .86, n * .5, n * .1), border_radius=2)
+
+
+def _cards(s, n):
+    pygame.draw.rect(s, (90, 110, 200), (n * .08, n * .2, n * .45, n * .62), border_radius=max(2, n // 10))
+    pygame.draw.rect(s, (255, 250, 240), (n * .42, n * .12, n * .45, n * .62), border_radius=max(2, n // 10))
+    pygame.draw.rect(s, (90, 110, 200), (n * .42, n * .12, n * .45, n * .62), max(1, n // 16), border_radius=max(2, n // 10))
+    _heart_at(s, n * .645, n * .43, n * .28)
+
+
+def _heart_at(s, cx, cy, w):
+    r = max(2, int(w * .3))
+    pygame.draw.circle(s, (230, 70, 110), (int(cx - w * .25), int(cy - w * .1)), r)
+    pygame.draw.circle(s, (230, 70, 110), (int(cx + w * .25), int(cy - w * .1)), r)
+    pygame.draw.polygon(s, (230, 70, 110), [(cx - w * .55, cy), (cx + w * .55, cy), (cx, cy + w * .55)])
+
+
+def _mole(s, n):
+    pygame.draw.ellipse(s, (60, 40, 30), (n * .05, n * .68, n * .9, n * .26))
+    pygame.draw.ellipse(s, (150, 100, 70), (n * .22, n * .25, n * .56, n * .6))
+    pygame.draw.rect(s, (60, 40, 30), (n * .05, n * .8, n * .9, n * .2))
+    for x in (.4, .6):
+        pygame.draw.circle(s, (20, 20, 20), (int(n * x), int(n * .45)), max(1, n // 16))
+    pygame.draw.circle(s, (240, 140, 150), (int(n * .5), int(n * .56)), max(2, n // 12))
+
+
 _DRAW = {
     "hunger": _food, "feed": _food, "happiness": _heart, "energy": _bolt, "rest": _moon,
     "cleanliness": _drop, "clean": _drop, "play": _ball, "coin": _coin, "map": _map,
@@ -170,4 +232,6 @@ _DRAW = {
     "decorate": _vase, "flowers": _flower, "lollipop": _lolly, "candy_apple": _apple,
     "flower_seeds": _seeds, "sunflower_seeds": _sunseeds, "games": _joystick,
     "snake": _snake, "pet_dash": _dash, "frogger": _frog,
+    "swim": _swim, "read": _book, "spa": _spa, "pamper": _spa,
+    "brick_bop": _bricks, "pet_pairs": _cards, "mole_pop": _mole,
 }

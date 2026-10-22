@@ -9,6 +9,7 @@ import math
 import pygame
 
 from core import world
+from core import story_data as SD
 from core.game_state import CARE_ACTIONS, LOCATION_BONUS
 from core.roster import roster_entry
 from engine import assets
@@ -17,6 +18,9 @@ from sprites import backdrops
 from sprites.action_animator import ActionAnimator
 from sprites.fx import Effects, pet_pose, NEED_COLORS
 from sprites.pet_sprite import PetSprite
+from sprites import npc_sprite
+from ui.dialogue_box import DialogueBox
+from ui.journal import Journal
 from ui.action_bar import ActionBar, ActionItem
 from ui.common import hint_bar, panel
 from ui.icons import icon
@@ -26,12 +30,29 @@ from ui.stats_bar import StatsBar
 
 CARE_LABELS = {"feed": "Feed", "play": "Play", "clean": "Clean", "rest": "Rest"}
 CARE_COLORS = {"feed": (226, 128, 50), "play": (60, 160, 90), "clean": (60, 130, 200), "rest": (130, 100, 200)}
-FEET = {"home": (320, 378), "backyard": (330, 352), "pond": (250, 356), "library": (330, 366), "spa": (250, 364)}
+FEET = {"home": (320, 378), "backyard": (330, 352), "pond": (250, 356), "library": (330, 366), "spa": (250, 364),
+        "willow_woods": (290, 376), "town_square": (300, 384), "lantern_hill": (250, 384)}
+# where townsfolk stand (feet), and whether they face right
+NPC_POS = {"town_square": (480, 384, False), "sweeties_candy_shop": (500, 372, False),
+           "gens_garden": (500, 374, False), "arcade": (500, 380, False), "pond": (560, 336, False),
+           "library": (470, 372, False), "spa": (100, 382, True), "willow_woods": (510, 360, False)}
 DEFAULT_FEET = (320, 372)
 MOOD_TEXT = {"happy": ("Happy", (60, 170, 80)), "okay": ("Okay", (200, 150, 30)), "sad": ("Sad", (210, 70, 70))}
 TOAST_SECS = 2.6
-PLACE_COLORS = {"swim": (40, 140, 200), "read": (140, 90, 170), "pamper": (210, 100, 160)}
-PLACE_ANIM = {"swim": "clean", "read": "rest", "pamper": "clean"}
+PLACE_COLORS = {"swim": (40, 140, 200), "read": (140, 90, 170), "pamper": (210, 100, 160),
+                "explore": (60, 130, 80), "light": (220, 160, 40)}
+PLACE_ANIM = {"swim": "clean", "read": "rest", "pamper": "clean", "explore": "play", "light": "play"}
+
+
+_shadow = []
+
+
+def _npc_shadow():
+    if not _shadow:
+        sh = pygame.Surface((68, 14), pygame.SRCALPHA)
+        pygame.draw.ellipse(sh, (0, 0, 0, 60), sh.get_rect())
+        _shadow.append(sh)
+    return _shadow[0]
 
 
 def _fmt_deltas(d):
@@ -58,6 +79,9 @@ class MainScene(BaseScene):
         self.pet = None
         self._species = None
         self._bubble_t = 0.0
+        self.dialog = None
+        self.journal = Journal()
+        self._npc_flip = {}
 
     # ---------------------------------------------------------- lifecycle
     def on_enter(self, **kwargs):
@@ -67,7 +91,9 @@ class MainScene(BaseScene):
             self._species = sp
         self.pet.set_feet(*FEET.get(self.state.pet.location, DEFAULT_FEET))
         self.map.hide()
+        self.journal.hide()
         self.pause = None
+        self.dialog = None
         self.fx.clear()
         self.anim_kind = None
         self.animator.is_active = False
@@ -78,13 +104,54 @@ class MainScene(BaseScene):
             info = self.state.get_current_location_info()
             self.say(f"Welcome to {info['name']}!")
         self.refresh_items()
+        self._maybe_story_dialogue()
 
     def on_exit(self):
         self.map.hide()
         self.pause = None
 
     def is_animating(self):
-        return bool(self.anim_kind or self.fx.texts or self.fx.parts or self.toast_t > 0)
+        return bool(self.anim_kind or self.fx.texts or self.fx.parts or self.toast_t > 0
+                    or self.dialog or self.state.story.notices)
+
+    # -------------------------------------------------------------- story
+    def open_dialog(self, lines):
+        if not lines:
+            return False
+        self.dialog = DialogueBox(lines, self.state.pet.name, self._pet_portrait(), self._after_dialogue)
+        return True
+
+    def _pet_portrait(self):
+        if self.pet is None:
+            return None
+        base = self.pet.base
+        h = 84
+        return pygame.transform.smoothscale(base, (max(1, int(base.get_width() * h / base.get_height())), h))
+
+    def _maybe_story_dialogue(self):
+        if self.dialog:
+            return True
+        if self.open_dialog(self.state.next_dialogue()):
+            return True
+        if self.state.story.ending_pending:
+            self.state.story.ending_pending = False
+            self.state.save()
+            self.game.switch("ending")
+            return True
+        return False
+
+    def _after_dialogue(self):
+        self.dialog = None
+        self.refresh_items()
+        if not self._maybe_story_dialogue():
+            self.state.save()
+
+    def talk(self, npc):
+        res = self.state.talk(npc)
+        if not res["success"]:
+            self.say(res["msg"], bad=True)
+            return
+        self.open_dialog(res["lines"])
 
     # ------------------------------------------------------------ helpers
     def say(self, text, bad=False):
@@ -153,11 +220,22 @@ class MainScene(BaseScene):
                                     f"Pick one of {len(GAME_INFO)} arcade games - win coins!"
                                     + (f" Top score: {best}" if best else ""), True, str(len(GAME_INFO)),
                                     (120, 70, 180)))
-        items.append(ActionItem("map", "Map", "map", "Open the neighborhood map (Select / M)", True, color=(80, 120, 190)))
+        for npc in s.story.npcs_at(loc):
+            info = SD.NPCS[npc]
+            mk = s.story.npc_marker(npc)
+            desc = {"new": f"{info['name']} needs your help! (Y)", "ready": f"Tell {info['name']} the good news! (Y)"}.get(
+                mk, f"Chat with {info['name']}, {info['title']} (Y)")
+            items.append(ActionItem("talk:" + npc, "Talk", "talk", desc, True,
+                                    {"new": "!", "ready": "*"}.get(mk, ""), (200, 120, 80)))
+        items.append(ActionItem("map", "Map", "map", "Open the map (Select / M).  Journal: X", True, color=(80, 120, 190)))
         self.bar.set_items(items)
 
     # -------------------------------------------------------------- input
     def handle_action(self, a):
+        if self.dialog:
+            return self.dialog.handle_action(a)
+        if self.journal.open:
+            return self.journal.handle_action(a, self.state.story)
         if self.pause:
             return self._pause_action(a)
         if self.map.open:
@@ -172,6 +250,13 @@ class MainScene(BaseScene):
             self.map.show(self.state.pet.location)
         elif a == "START":
             self.open_pause()
+        elif a == "X":
+            self.journal.show()
+        elif a == "Y":
+            npcs = self.state.story.npcs_at(self.state.pet.location)
+            if npcs:
+                self.bar.focus_id("talk:" + npcs[0])
+                self.activate("talk:" + npcs[0])
         elif a == "B":
             self.bar.focus_id("map")
         elif a == "L":
@@ -213,13 +298,15 @@ class MainScene(BaseScene):
         elif a == "A":
             dest = self.map.selected
             self.map.hide()
-            if dest and dest != self.state.pet.location:
+            if dest and not self.state.is_unlocked(dest):
+                self.say("That place is still asleep. Keep helping the townsfolk!", bad=True)
+            elif dest and dest != self.state.pet.location:
                 self.game.switch("travel", dest=dest)
             elif dest:
                 self.say("You're already here!")
 
     def open_pause(self):
-        self.pause = Menu("Paused", [("resume", "Resume"), ("save", "Save now"),
+        self.pause = Menu("Paused", [("resume", "Resume"), ("journal", "Journal"), ("save", "Save now"),
                                      ("newpet", "New pet..."), ("quit", "Save & Quit")])
 
     def _pause_action(self, a):
@@ -232,7 +319,9 @@ class MainScene(BaseScene):
         elif a == "A":
             sel = self.pause.selected
             self.pause = None
-            if sel == "save":
+            if sel == "journal":
+                self.journal.show()
+            elif sel == "save":
                 self.say("Saved!" if self.state.save() else "Save failed!", bad=False)
             elif sel == "newpet":
                 self.game.switch("title", mode="select")
@@ -266,10 +355,14 @@ class MainScene(BaseScene):
             if res.get("success"):
                 self.fx.float_text(f"+{res['coins']} coins", self.pet.feet.x + 60, self.pet.feet.y - 150,
                                    NEED_COLORS["coins"])
+        elif item_id.startswith("talk:"):
+            self.talk(item_id[5:])
         elif item_id.startswith("place:"):
             key = item_id[6:]
             res = s.perform_place_action(key)
             self._feedback(res, PLACE_ANIM.get(key, "play"))
+            if res.get("success") and key == "light":
+                self.fx.burst(self.pet.feet.x + 200, 200, (255, 210, 110), "sparkle", 30)
         elif item_id == "decorate":
             res = s.decorate_home()
             self._feedback(res, "decorate")
@@ -283,6 +376,8 @@ class MainScene(BaseScene):
         elif item and not item.enabled:
             self.say(item.desc, bad=True)
         self.refresh_items()
+        if not self.dialog:
+            self._maybe_story_dialogue()
 
     def _feedback(self, res, kind):
         hx, hy = self.pet.feet.x, self.pet.feet.y - self.pet.height - 10
@@ -317,6 +412,14 @@ class MainScene(BaseScene):
         self.stats.update(dt, self.state.pet.needs)
         self.bar.update(dt)
         self.map.update(dt)
+        self.journal.update(dt)
+        if self.dialog:
+            self.dialog.update(dt)
+        elif self.toast_t <= 0 and not self.anim_kind:
+            note = self.state.story.pop_notice()
+            if note:
+                self.say(note)
+                self.refresh_items()
         self.pet.update(dt)
         self.animator.update(dt)
         self.fx.update(dt)
@@ -336,8 +439,9 @@ class MainScene(BaseScene):
         s = self.state
         p = s.pet
         loc = p.location
-        surf.blit(backdrops.get(loc), (0, 0))
+        surf.blit(backdrops.get(loc, s.time_of_day(), self._variant(loc)), (0, 0))
         backdrops.draw_ambient(surf, loc, self.t)
+        self._draw_npcs(surf, loc)
         if loc == "backyard":
             self._draw_garden(surf)
         if loc == "home" and p.home_decorated:
@@ -351,6 +455,10 @@ class MainScene(BaseScene):
         self.fx.draw(surf)
         self.stats.draw(surf, p.needs, p.coins)
         self._draw_place_tag(surf)
+        self._draw_tracker(surf)
+        if self.dialog:
+            self.dialog.draw(surf)
+            return
         self._draw_message(surf)
         self.bar.draw(surf, busy=bool(self.anim_kind))
         if self.map.open:
@@ -366,13 +474,64 @@ class MainScene(BaseScene):
                     labels[key] = "Play bonus"
                 elif world.shop_items(key):
                     labels[key] = "Shop"
+                elif key == "town_square":
+                    labels[key] = "Mayor Maple"
                 for act in world.place_actions_for(key):
                     spec = world.PLACE_ACTIONS[act]
                     labels[key] = spec["label"] + (f" ({spec['cost']}c)" if spec["cost"] else "")
-            self.map.draw(surf, loc, labels)
+            locked = {k for k in world.LOCATIONS if not s.is_unlocked(k)}
+            markers = {}
+            for npc, info in SD.NPCS.items():
+                mk = s.story.npc_marker(npc)
+                if mk and markers.get(info["location"]) != "ready":
+                    markers[info["location"]] = mk
+            self.map.draw(surf, loc, labels, locked, markers)
+        elif self.journal.open:
+            self.journal.draw(surf, s)
         elif self.pause:
             self.pause.draw(surf)
             hint_bar(surf, [("D-pad", "Choose"), ("A", "OK"), ("B", "Back")])
+
+    def _variant(self, loc):
+        st = self.state.story
+        if loc == "town_square":
+            return "v2" if st.finished else ("v1" if len(st.sparks) >= 2 else "v0")
+        if loc == "lantern_hill":
+            return "v1" if st.finished else ""
+        return ""
+
+    def _draw_npcs(self, surf, loc):
+        for npc in self.state.story.npcs_at(loc):
+            x, y, flip = NPC_POS.get(loc, (500, 372, False))
+            img = npc_sprite.surface(npc)
+            if flip:
+                img = self._npc_flip.get(npc)
+                if img is None:
+                    img = self._npc_flip[npc] = pygame.transform.flip(npc_sprite.surface(npc), True, False)
+            bob = int(2 * math.sin(self.t * 2.2 + len(npc)))
+            surf.blit(_npc_shadow(), (x - 34, y - 8))
+            surf.blit(img, img.get_rect(midbottom=(x, y + bob)))
+            mk = self.state.story.npc_marker(npc)
+            if mk:
+                by = y - img.get_height() - 18 + int(4 * math.sin(self.t * 4))
+                col = (240, 150, 40) if mk == "new" else (250, 200, 50)
+                pygame.draw.circle(surf, (60, 40, 30), (x, by + 2), 15)
+                pygame.draw.circle(surf, col, (x, by), 15)
+                m = assets.text("!" if mk == "new" else "*", 26, (255, 255, 255), bold=True)
+                surf.blit(m, m.get_rect(center=(x, by + 1)))
+
+    def _draw_tracker(self, surf):
+        text = self.state.story.objective(self.state.pet.name)
+        if not text:
+            return
+        t = assets.text(text, 17, (255, 250, 220), bold=True)
+        if t.get_width() > 330:
+            t = assets.text(text, 15, (255, 250, 220), bold=True)
+        w = t.get_width() + 40
+        x = 632 - w
+        surf.blit(panel((w, 28), (90, 50, 30, 205), 13, None), (x, 53))
+        surf.blit(icon("spark", 18), (x + 8, 58))
+        surf.blit(t, (x + 30, 58))
 
     def _draw_place_tag(self, surf):
         info = self.state.get_current_location_info()

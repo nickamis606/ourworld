@@ -225,6 +225,63 @@ def _mole(s, n):
     pygame.draw.circle(s, (240, 140, 150), (int(n * .5), int(n * .56)), max(2, n // 12))
 
 
+def _talk(s, n):
+    pygame.draw.ellipse(s, (255, 255, 255), (n * .06, n * .12, n * .88, n * .62))
+    pygame.draw.polygon(s, (255, 255, 255), [(n * .25, n * .6), (n * .2, n * .92), (n * .48, n * .68)])
+    for k in range(3):
+        pygame.draw.circle(s, (120, 100, 160), (int(n * (.3 + k * .2)), int(n * .43)), max(1, n // 14))
+
+
+def _explore(s, n):
+    pygame.draw.circle(s, (220, 240, 255), (int(n * .42), int(n * .42)), int(n * .28))
+    pygame.draw.circle(s, (90, 70, 50), (int(n * .42), int(n * .42)), int(n * .28), max(2, n // 10))
+    pygame.draw.line(s, (90, 70, 50), (n * .62, n * .62), (n * .92, n * .92), max(3, n // 7))
+
+
+def _lantern(s, n):
+    pygame.draw.circle(s, (255, 230, 150), (n // 2, int(n * .55)), int(n * .4))
+    pygame.draw.rect(s, (255, 200, 90), (n * .3, n * .3, n * .4, n * .52), border_radius=max(2, n // 6))
+    pygame.draw.rect(s, (130, 80, 40), (n * .3, n * .3, n * .4, n * .52), max(1, n // 14), border_radius=max(2, n // 6))
+    pygame.draw.rect(s, (130, 80, 40), (n * .36, n * .2, n * .28, n * .1))
+    pygame.draw.line(s, (130, 80, 40), (n * .5, n * .02), (n * .5, n * .2), 2)
+
+
+def _journal(s, n):
+    pygame.draw.rect(s, (200, 90, 80), (n * .14, n * .08, n * .72, n * .84), border_radius=max(2, n // 10))
+    pygame.draw.rect(s, (250, 240, 220), (n * .26, n * .16, n * .52, n * .68), border_radius=2)
+    for k in range(3):
+        pygame.draw.line(s, (180, 160, 140), (n * .32, n * (.32 + k * .16)), (n * .72, n * (.32 + k * .16)), 1)
+    pygame.draw.rect(s, (250, 200, 70), (n * .6, n * .02, n * .1, n * .3))
+
+
+def _square(s, n):
+    pygame.draw.ellipse(s, (160, 160, 170), (n * .1, n * .55, n * .8, n * .3))
+    pygame.draw.ellipse(s, (120, 190, 240), (n * .2, n * .6, n * .6, n * .18))
+    pygame.draw.rect(s, (160, 160, 170), (n * .44, n * .2, n * .12, n * .45))
+    pygame.draw.circle(s, (120, 190, 240), (n // 2, int(n * .18)), max(2, n // 9))
+
+
+def _woods(s, n):
+    pygame.draw.rect(s, (110, 72, 44), (n * .44, n * .5, n * .12, n * .44))
+    pygame.draw.circle(s, (60, 140, 70), (n // 2, int(n * .38)), int(n * .32))
+    for k in range(5):
+        x = n * (.25 + k * .12)
+        pygame.draw.line(s, (90, 170, 90), (x, n * .45), (x, n * .8), 2)
+
+
+def _star_shape(s, cx, cy, r, col):
+    pts = []
+    for i in range(10):
+        a = -math.pi / 2 + i * math.pi / 5
+        rr = r if i % 2 == 0 else r * 0.45
+        pts.append((cx + math.cos(a) * rr, cy + math.sin(a) * rr))
+    pygame.draw.polygon(s, col, pts)
+
+
+def _spark(s, n):
+    _star_shape(s, n / 2, n / 2, n * .46, (255, 220, 90))
+
+
 _DRAW = {
     "hunger": _food, "feed": _food, "happiness": _heart, "energy": _bolt, "rest": _moon,
     "cleanliness": _drop, "clean": _drop, "play": _ball, "coin": _coin, "map": _map,
@@ -234,4 +291,94 @@ _DRAW = {
     "snake": _snake, "pet_dash": _dash, "frogger": _frog,
     "swim": _swim, "read": _book, "spa": _spa, "pamper": _spa,
     "brick_bop": _bricks, "pet_pairs": _cards, "mole_pop": _mole,
+    "talk": _talk, "explore": _explore, "lantern": _lantern, "light": _lantern,
+    "journal": _journal, "square": _square, "woods": _woods, "spark": _spark,
 }
+
+
+# ---------------------------------------------------------------- stickers
+_scache: dict = {}
+
+
+def sticker(shape: str, col: tuple, size: int = 48, owned: bool = True) -> pygame.Surface:
+    """Round die-cut sticker with a simple shape. Unowned = gray silhouette."""
+    key = (shape, col, size, owned)
+    s = _scache.get(key)
+    if s is not None:
+        return s
+    n = size
+    s = pygame.Surface((n, n), pygame.SRCALPHA)
+    pygame.draw.circle(s, (255, 255, 255) if owned else (90, 86, 100), (n // 2, n // 2), n // 2)
+    pygame.draw.circle(s, (230, 225, 235) if owned else (70, 66, 80), (n // 2, n // 2), n // 2, 2)
+    c = col if owned else (120, 116, 130)
+    d = _dark(c)
+    m = n / 2
+    if shape == "star":
+        _star_shape(s, m, m, n * .32, c)
+    elif shape == "key":
+        pygame.draw.circle(s, c, (int(n * .35), int(m)), int(n * .14), max(2, n // 12))
+        pygame.draw.line(s, c, (n * .47, m), (n * .78, m), max(3, n // 10))
+        pygame.draw.line(s, c, (n * .7, m), (n * .7, n * .64), max(2, n // 12))
+    elif shape == "check":
+        r = pygame.Rect(n * .22, n * .22, n * .56, n * .56)
+        pygame.draw.rect(s, c, r)
+        for k in range(3):
+            pygame.draw.line(s, (255, 255, 255), (r.x + k * r.w / 3 + 6, r.y), (r.x + k * r.w / 3 + 6, r.bottom), 2)
+            pygame.draw.line(s, (255, 255, 255), (r.x, r.y + k * r.h / 3 + 6), (r.right, r.y + k * r.h / 3 + 6), 2)
+    elif shape == "swirl":
+        pygame.draw.line(s, (200, 170, 130), (m, m), (m, n * .9), max(2, n // 14))
+        pygame.draw.circle(s, c, (int(m), int(n * .42)), int(n * .24))
+        pygame.draw.arc(s, (255, 255, 255), (m - n * .14, n * .28, n * .28, n * .28), 0, 4.5, 2)
+    elif shape == "leaf":
+        pygame.draw.ellipse(s, c, (n * .2, n * .3, n * .6, n * .4))
+        pygame.draw.line(s, d, (n * .22, n * .62), (n * .78, n * .4), 2)
+    elif shape == "shell":
+        pygame.draw.polygon(s, c, [(n * .2, n * .62), (m, n * .2), (n * .8, n * .62)])
+        pygame.draw.ellipse(s, c, (n * .2, n * .5, n * .6, n * .24))
+        for k in (-1, 0, 1):
+            pygame.draw.line(s, d, (m, n * .24), (m + k * n * .22, n * .68), 2)
+    elif shape == "book":
+        pygame.draw.rect(s, c, (n * .24, n * .22, n * .52, n * .56), border_radius=3)
+        pygame.draw.rect(s, (255, 250, 230), (n * .3, n * .26, n * .4, n * .1))
+    elif shape == "bubbles":
+        for (x, y, r) in ((.4, .55, .18), (.62, .38, .13), (.64, .64, .09)):
+            pygame.draw.circle(s, c, (int(n * x), int(n * y)), int(n * r), max(2, n // 16))
+    elif shape == "fox":
+        pygame.draw.polygon(s, c, [(n * .2, n * .25), (n * .8, n * .25), (m, n * .8)])
+        pygame.draw.polygon(s, (255, 250, 240), [(n * .35, n * .5), (n * .65, n * .5), (m, n * .8)])
+        pygame.draw.circle(s, (30, 30, 30), (int(m), int(n * .76)), max(2, n // 16))
+    elif shape == "lantern":
+        _lantern(s, n) if owned else pygame.draw.rect(s, c, (n * .3, n * .3, n * .4, n * .5), border_radius=6)
+    elif shape == "flag":
+        pygame.draw.line(s, (90, 70, 60), (n * .1, n * .35), (n * .9, n * .35), 2)
+        for k, cc in enumerate((c, (250, 120, 170), (250, 210, 70))):
+            x = n * (.16 + k * .24)
+            pygame.draw.polygon(s, cc if owned else c, [(x, n * .35), (x + n * .2, n * .35), (x + n * .1, n * .7)])
+    elif shape == "acorn":
+        pygame.draw.ellipse(s, c, (n * .3, n * .38, n * .4, n * .42))
+        pygame.draw.ellipse(s, d, (n * .26, n * .28, n * .48, n * .2))
+    elif shape == "mushroom":
+        pygame.draw.rect(s, (245, 235, 215), (n * .42, n * .45, n * .16, n * .3))
+        pygame.draw.ellipse(s, c, (n * .2, n * .24, n * .6, n * .32))
+        pygame.draw.circle(s, (255, 255, 255), (int(n * .4), int(n * .36)), max(2, n // 14))
+    elif shape == "feather":
+        pygame.draw.ellipse(s, c, (n * .38, n * .14, n * .24, n * .66))
+        pygame.draw.line(s, d, (m, n * .18), (m, n * .86), 2)
+    elif shape == "pinecone":
+        pygame.draw.ellipse(s, c, (n * .32, n * .2, n * .36, n * .6))
+        for k in range(4):
+            pygame.draw.line(s, d, (n * .34, n * (.3 + k * .12)), (n * .66, n * (.3 + k * .12)), 2)
+    elif shape == "ladybug":
+        pygame.draw.circle(s, c, (int(m), int(m + 2)), int(n * .26))
+        pygame.draw.line(s, (30, 30, 30), (m, n * .28), (m, n * .76), 2)
+        pygame.draw.circle(s, (30, 30, 30), (int(m), int(n * .28)), int(n * .1))
+        for (x, y) in ((.4, .48), (.6, .48), (.42, .64), (.58, .64)):
+            pygame.draw.circle(s, (30, 30, 30), (int(n * x), int(n * y)), max(2, n // 18))
+    else:
+        pygame.draw.circle(s, c, (int(m), int(m)), int(n * .25))
+    _scache[key] = s
+    return s
+
+
+def _dark(c, k=50):
+    return tuple(max(0, v - k) for v in c)

@@ -27,10 +27,26 @@ def run(g, n, events=()):
         g.step(1 / 30, [])
 
 
-def adopt(g):
+def skip_dialogue(g, limit=80):
+    for _ in range(limit):
+        if not getattr(g.scene, "dialog", None):
+            return
+        run(g, 1, key(pygame.K_SPACE))
+    raise AssertionError("dialogue never ended")
+
+
+def unlock_all(g):
+    from core.world import LOCATIONS
+    g.state.story.unlocked |= set(LOCATIONS)
+
+
+def adopt(g, intro=False):
     run(g, 2, key(pygame.K_SPACE))
     run(g, 20)
     assert g.scene_name == "main"
+    if not intro:
+        assert g.scene.dialog is not None   # the story intro plays for a new pet
+        skip_dialogue(g)
 
 
 def test_boot_and_adopt(game):
@@ -117,6 +133,7 @@ def test_new_place_action_via_keys(game, place, action):
 
 def test_map_travel_to_pond_and_back_row(game):
     adopt(game)
+    unlock_all(game)
     run(game, 2, key(pygame.K_m))
     run(game, 2, key(pygame.K_DOWN))
     run(game, 2, key(pygame.K_DOWN))
@@ -125,6 +142,8 @@ def test_map_travel_to_pond_and_back_row(game):
     run(game, 100)
     assert game.scene_name == "main" and game.state.pet.location == "pond"
     run(game, 2, key(pygame.K_m))
+    run(game, 2, key(pygame.K_DOWN))
+    assert game.scene.map.selected == "willow_woods"
     run(game, 2, key(pygame.K_DOWN))   # wraps to the top row
     assert game.scene.map.selected == "home"
 
@@ -179,7 +198,7 @@ def test_pause_and_quit_saves(game):
     adopt(game)
     run(game, 2, key(pygame.K_RETURN))
     assert game.scene.pause is not None
-    for _ in range(3):
+    for _ in range(4):   # Resume, Journal, Save, New pet, Save & Quit
         run(game, 1, key(pygame.K_DOWN))
     run(game, 1, key(pygame.K_SPACE))
     assert not game.running
@@ -198,4 +217,5 @@ def test_continue_skips_select(tmp_path):
     run(g2, 2, key(pygame.K_SPACE))
     run(g2, 20)
     assert g2.scene_name == "main" and g2.state.pet.name == g.state.pet.name
+    assert g2.scene.dialog is None      # intro only plays once
     os.environ.pop("OURWORLD_SAVE", None)

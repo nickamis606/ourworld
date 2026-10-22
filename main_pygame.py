@@ -66,6 +66,8 @@ class Game:
                 from scenes.travel_scene import TravelScene as cls
             elif name == "arcade":
                 from scenes.arcade_scene import ArcadeScene as cls
+            elif name == "ending":
+                from scenes.ending_scene import EndingScene as cls
             else:
                 raise KeyError(name)
             sc = self._scenes[name] = cls(self)

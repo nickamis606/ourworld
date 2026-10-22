@@ -18,17 +18,53 @@ FLOOR_Y = 330          # where the pet stands; HUD sits above 44 and below 392
 _cache: dict = {}
 
 
-def get(location: str) -> pygame.Surface:
-    surf = _cache.get(location)
+INDOOR = {"home", "library", "spa", "arcade", "sweeties_candy_shop", "gens_garden"}
+# multiply tints baked into the cached copy (zero per-frame cost on ARM)
+TINTS = {"evening": ((255, 205, 175), (250, 230, 210)),
+         "night": ((105, 115, 185), (205, 195, 225))}
+_tinted: dict = {}      # small LRU: only the place you're standing in is needed
+_TINT_MAX = 3
+
+
+def _new_surface():
+    return pygame.Surface((W, H)).convert() if pygame.display.get_surface() else pygame.Surface((W, H))
+
+
+def get(location: str, period: str = "day", variant: str = "") -> pygame.Surface:
+    """Opaque 640x480 backdrop, built once per (place, variant) and cached.
+    period 'evening'/'night' returns a tinted copy (also cached, LRU of 3)."""
+    key = (location, variant)
+    surf = _cache.get(key)
     if surf is None:
-        surf = pygame.Surface((W, H)).convert() if pygame.display.get_surface() else pygame.Surface((W, H))
-        BUILDERS.get(location, _park)(surf)
-        _cache[location] = surf
-    return surf
+        surf = _new_surface()
+        b = BUILDERS.get(location, _park)
+        if variant and location in VARIANT_BUILDERS:
+            VARIANT_BUILDERS[location](surf, variant)
+        else:
+            b(surf)
+        _cache[key] = surf
+    if period not in TINTS:
+        return surf
+    tkey = (location, variant, period)
+    t = _tinted.pop(tkey, None)
+    if t is None:
+        t = surf.copy()
+        out, inside = TINTS[period]
+        t.fill(inside if location in INDOOR else out, special_flags=pygame.BLEND_MULT)
+        if period == "night" and location not in INDOOR:
+            rng = random.Random(len(location))
+            for _ in range(40):
+                x, y = rng.randint(0, W), rng.randint(44, 150)
+                t.set_at((x, y), (255, 255, 230))
+        if len(_tinted) >= _TINT_MAX:
+            _tinted.pop(next(iter(_tinted)))
+    _tinted[tkey] = t
+    return t
 
 
 def clear_cache():
     _cache.clear()
+    _tinted.clear()
 
 
 # ---------------------------------------------------------------- helpers
@@ -365,9 +401,148 @@ def _spa(surf):
     _sign(surf, "PAWS & CLAWS SPA", 420, 180, (200, 100, 160))
 
 
+def _woods(surf):
+    _vgrad(surf, (0, 0, W, 300), (120, 170, 120), (70, 120, 80))
+    rng = random.Random(11)
+    # far trunks
+    for i in range(9):
+        x = 20 + i * 72 + rng.randint(-10, 10)
+        pygame.draw.rect(surf, (70, 90, 60), (x, 60, 18, 240))
+    # willow canopies with drooping strands
+    for cx, cy, r in ((90, 70, 110), (330, 40, 130), (560, 80, 110)):
+        pygame.draw.circle(surf, (60, 120, 70), (cx, cy), r)
+        pygame.draw.circle(surf, (80, 145, 80), (cx - 20, cy - 16), int(r * 0.7))
+        for k in range(16):
+            x = cx - r + k * (2 * r // 16)
+            ln = rng.randint(80, 170)
+            pygame.draw.line(surf, (90, 160, 90), (x, cy + 20), (x + rng.randint(-6, 6), cy + ln), 3)
+    for x in (100, 340, 560):
+        pygame.draw.rect(surf, (100, 72, 46), (x - 14, 150, 28, 180), border_radius=6)
+    # ground + path
+    _vgrad(surf, (0, 300, W, H - 300), (90, 140, 70), (60, 105, 50))
+    pygame.draw.polygon(surf, (170, 140, 100), [(220, H), (420, H), (360, 300), (300, 300)])
+    # mossy log
+    pygame.draw.rect(surf, (120, 84, 50), (430, 330, 160, 40), border_radius=20)
+    pygame.draw.ellipse(surf, (170, 130, 90), (570, 330, 30, 40))
+    pygame.draw.ellipse(surf, (120, 84, 50), (578, 338, 14, 24), 2)
+    pygame.draw.rect(surf, (90, 160, 80), (440, 326, 120, 10), border_radius=5)
+    # mushrooms + ferns
+    for x, y in ((60, 360), (90, 372), (200, 350)):
+        pygame.draw.rect(surf, (240, 230, 210), (x - 3, y - 10, 6, 12))
+        pygame.draw.ellipse(surf, (220, 60, 60), (x - 11, y - 18, 22, 12))
+        pygame.draw.circle(surf, (255, 255, 255), (x - 3, y - 14), 2)
+    for x in (150, 500, 610):
+        for a in (-0.8, -0.3, 0.3, 0.8):
+            pygame.draw.line(surf, (50, 130, 60), (x, 395), (x + math.sin(a) * 30, 395 - math.cos(a) * 34), 4)
+    _sign(surf, "WILLOW WOODS", 330, 236, (60, 120, 70))
+
+
+def _town_square(surf, level="v0"):
+    """level v0 = sleepy gray town, v1 = waking up, v2 = festival."""
+    lv = int(level[1:]) if level[1:].isdigit() else 0
+    sky = [((170, 180, 190), (210, 212, 216)), ((140, 200, 240), (210, 235, 250)),
+           ((50, 40, 100), (230, 120, 110))][lv]
+    _vgrad(surf, (0, 0, W, 240), *sky)
+    grey = lv == 0
+    facades = [(220, 130, 120), (240, 200, 110), (140, 190, 220), (170, 210, 140), (220, 160, 200)]
+    for i, x in enumerate(range(0, W, 128)):
+        c = facades[i % 5]
+        if grey:
+            g = sum(c) // 3
+            c = (g - 30, g - 30, g - 26)
+        h = 150 + (i % 2) * 30
+        pygame.draw.rect(surf, c, (x + 4, 250 - h, 120, h))
+        pygame.draw.polygon(surf, tuple(max(0, v - 50) for v in c), [(x, 250 - h), (x + 128, 250 - h), (x + 64, 210 - h)])
+        for wy in range(270 - h, 230, 46):
+            for wx in (x + 22, x + 76):
+                lit = (255, 220, 120) if lv == 2 else ((150, 150, 160) if grey else (200, 230, 250))
+                pygame.draw.rect(surf, lit, (wx, wy, 28, 24), border_radius=3)
+    # plaza cobbles
+    _vgrad(surf, (0, 250, W, H - 250), (196, 184, 168) if not grey else (170, 168, 166), (160, 146, 130) if not grey else (140, 138, 136))
+    for y in range(262, H, 18):
+        off = 0 if (y // 18) % 2 else 14
+        for x in range(-off, W, 28):
+            pygame.draw.rect(surf, (175, 162, 146) if not grey else (156, 154, 152), (x, y, 26, 16), 1, border_radius=4)
+    # fountain
+    water = (110, 190, 240) if not grey else (130, 140, 150)
+    pygame.draw.ellipse(surf, (150, 150, 160), (200, 250, 240, 70))
+    pygame.draw.ellipse(surf, water, (214, 258, 212, 50))
+    pygame.draw.rect(surf, (150, 150, 160), (306, 200, 28, 72))
+    pygame.draw.ellipse(surf, (150, 150, 160), (282, 190, 76, 20))
+    # notice board
+    pygame.draw.rect(surf, (120, 80, 50), (40, 250, 8, 90))
+    pygame.draw.rect(surf, (120, 80, 50), (132, 250, 8, 90))
+    pygame.draw.rect(surf, (170, 120, 70), (30, 220, 120, 70), border_radius=4)
+    for i, c in enumerate(((255, 250, 220), (250, 220, 230), (220, 240, 255))):
+        pygame.draw.rect(surf, c, (40 + i * 36, 230, 30, 40))
+    if lv >= 1:
+        for x in (20, 620):
+            pygame.draw.rect(surf, (200, 120, 70), (x - 14, 360, 28, 24), border_radius=4)
+            pygame.draw.circle(surf, (250, 120, 160), (x - 4, 356), 7)
+            pygame.draw.circle(surf, (255, 220, 90), (x + 6, 354), 7)
+    if lv == 2:
+        for row, y0 in enumerate((70, 110)):
+            pts = [(x, y0 + int(16 * math.sin(x / W * math.pi))) for x in range(0, W + 1, 32)]
+            pygame.draw.lines(surf, (80, 60, 50), False, pts, 2)
+            for i, (x, y) in enumerate(pts[:-1]):
+                col = [(250, 120, 170), (250, 210, 70), (140, 200, 250), (160, 230, 140)][(i + row) % 4]
+                pygame.draw.polygon(surf, col, [(x, y), (x + 24, y + 1), (x + 12, y + 18)])
+    _sign(surf, "TOWN SQUARE", 320, 140, (190, 120, 60) if not grey else (130, 120, 110))
+
+
+def _lantern_hill(surf, lit="v0"):
+    on = lit == "v1"
+    _vgrad(surf, (0, 0, W, 300), (40, 40, 90) if on else (110, 140, 190), (230, 140, 120) if on else (210, 210, 220))
+    if on:
+        rng = random.Random(5)
+        for _ in range(50):
+            pygame.draw.circle(surf, (255, 250, 220), (rng.randint(0, W), rng.randint(44, 200)), 1)
+    # town far below
+    for i, x in enumerate(range(0, W, 46)):
+        h = 30 + (i * 37) % 40
+        pygame.draw.rect(surf, (90, 90, 130) if on else (150, 160, 180), (x, 300 - h, 40, h))
+        if on:
+            pygame.draw.rect(surf, (255, 220, 120), (x + 14, 300 - h + 10, 10, 8))
+    # the hill
+    pygame.draw.ellipse(surf, (90, 150, 80), (-200, 230, 1040, 420))
+    pygame.draw.ellipse(surf, (110, 170, 90), (-120, 270, 880, 360))
+    pygame.draw.polygon(surf, (200, 180, 130), [(260, H), (380, H), (340, 260), (310, 260)])
+    # lantern post and lantern
+    pygame.draw.rect(surf, (70, 60, 60), (464, 130, 12, 200))
+    pygame.draw.line(surf, (70, 60, 60), (470, 136), (520, 136), 6)
+    pygame.draw.line(surf, (70, 60, 60), (512, 136), (512, 150), 3)
+    body = pygame.Rect(486, 150, 52, 70)
+    if on:
+        for r, a in ((90, 40), (64, 70), (44, 110)):
+            g = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(g, (255, 210, 110, a), (r, r), r)
+            surf.blit(g, (body.centerx - r, body.centery - r))
+    pygame.draw.rect(surf, (255, 210, 110) if on else (110, 100, 100), body, border_radius=14)
+    pygame.draw.rect(surf, (120, 70, 40), body, 4, border_radius=14)
+    pygame.draw.rect(surf, (120, 70, 40), (body.x + 8, body.y - 6, body.w - 16, 8), border_radius=3)
+    pygame.draw.rect(surf, (120, 70, 40), (body.x + 8, body.bottom - 2, body.w - 16, 8), border_radius=3)
+    # six spark pedestals around the post
+    for i in range(6):
+        x = 380 + i * 36
+        pygame.draw.rect(surf, (160, 150, 150), (x, 340, 20, 20), border_radius=4)
+    _sign(surf, "LANTERN HILL", 150, 200, (200, 140, 40))
+
+
+def _town_default(surf):
+    _town_square(surf, "v0")
+
+
+def _hill_default(surf):
+    _lantern_hill(surf, "v0")
+
+
+VARIANT_BUILDERS = {"town_square": _town_square, "lantern_hill": _lantern_hill}
+
+
 BUILDERS = {"home": _home, "backyard": _backyard, "park": _park,
             "sweeties_candy_shop": _candy, "gens_garden": _gens, "arcade": _arcade,
-            "pond": _pond, "library": _library, "spa": _spa}
+            "pond": _pond, "library": _library, "spa": _spa,
+            "willow_woods": _woods, "town_square": _town_default, "lantern_hill": _hill_default}
 
 
 # ---------------------------------------------------------------- ambient
@@ -427,6 +602,25 @@ def draw_ambient(surf, location: str, t: float) -> None:
             r = 4 + int(k * 10)
             if k < 0.85:
                 pygame.draw.circle(surf, (245, 250, 252), (int(x), int(270 - k * 120)), r, 2)
+    elif location == "willow_woods":
+        for i in range(6):   # fireflies
+            x = 60 + i * 100 + math.sin(t * 0.8 + i * 1.7) * 30
+            y = 250 + math.sin(t * 1.3 + i) * 40
+            if int(t * 3 + i) % 3:
+                pygame.draw.circle(surf, (230, 255, 140), (int(x), int(y)), 2)
+        k = (t * 0.2) % 1.0  # one falling leaf
+        pygame.draw.ellipse(surf, (230, 170, 60), (100 + k * 400 + math.sin(t * 3) * 20, 60 + k * 320, 10, 6))
+    elif location == "town_square":
+        for i in range(3):   # fountain spray
+            k = (t * 1.2 + i / 3) % 1.0
+            x = 320 + (i - 1) * 18 * k
+            y = 196 - math.sin(k * math.pi) * 30 + k * 60
+            pygame.draw.circle(surf, (200, 230, 255), (int(x), int(y)), 3)
+    elif location == "lantern_hill":
+        for i in range(4):   # drifting little sky lanterns / motes
+            k = (t * 0.06 + i * 0.25) % 1.0
+            x = 120 + i * 130 + math.sin(t + i) * 10
+            pygame.draw.circle(surf, (255, 200, 110), (int(x), int(330 - k * 280)), 3)
     elif location == "home":
         # sunbeam dust motes in the window
         for i in range(4):

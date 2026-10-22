@@ -434,7 +434,7 @@ def _woods(surf):
     for x in (150, 500, 610):
         for a in (-0.8, -0.3, 0.3, 0.8):
             pygame.draw.line(surf, (50, 130, 60), (x, 395), (x + math.sin(a) * 30, 395 - math.cos(a) * 34), 4)
-    _sign(surf, "WILLOW WOODS", 330, 236, (60, 120, 70))
+    _sign(surf, "WILLOW WOODS", 140, 226, (60, 120, 70))
 
 
 def _town_square(surf, level="v0"):

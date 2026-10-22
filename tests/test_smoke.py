@@ -219,3 +219,124 @@ def test_continue_skips_select(tmp_path):
     assert g2.scene_name == "main" and g2.state.pet.name == g.state.pet.name
     assert g2.scene.dialog is None      # intro only plays once
     os.environ.pop("OURWORLD_SAVE", None)
+
+
+# ------------------------------------------------------------------ story
+def test_chapter_one_by_buttons(game):
+    """Intro -> feed -> play -> map to Town Square -> talk to the Mayor (all via keys)."""
+    adopt(game, intro=True)
+    assert game.scene.dialog is not None
+    skip_dialogue(game)
+    st = game.state
+    assert st.story.status("welcome") == "active"
+    st.pet.needs.hunger = 30
+    game.scene.bar.focus_id("feed")
+    run(game, 70, key(pygame.K_SPACE))
+    st.pet.needs.happiness = 30
+    game.scene.bar.focus_id("play")
+    run(game, 90, key(pygame.K_SPACE))
+    run(game, 120)  # let notices drain
+    # Arcade is still locked
+    run(game, 2, key(pygame.K_m))
+    run(game, 2, key(pygame.K_DOWN))
+    run(game, 2, key(pygame.K_RIGHT))
+    run(game, 2, key(pygame.K_RIGHT))
+    assert game.scene.map.selected == "arcade"
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 30)
+    assert game.scene_name == "main" and st.pet.location == "home"
+    # Town Square: home (0,0) -> down x3 -> right
+    run(game, 2, key(pygame.K_m))
+    for _ in range(3):
+        run(game, 2, key(pygame.K_DOWN))
+    run(game, 2, key(pygame.K_RIGHT))
+    assert game.scene.map.selected == "town_square"
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 100)
+    assert game.scene_name == "main" and st.pet.location == "town_square"
+    assert st.story.status("welcome") == "ready"
+    run(game, 1, key(pygame.K_LALT))          # Y = talk
+    assert game.scene.dialog is not None
+    assert game.scene.dialog.lines[0][0] == "mayor"
+    skip_dialogue(game)
+    assert st.story.status("welcome") == "done" and st.story.status("park_laughs") == "active"
+    assert "town_key" in st.story.stickers
+
+
+def test_scripted_run_to_the_ending(game):
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))
+    import story_script as S
+    adopt(game)
+    st = game.state
+    S.chapter1(st); S.chapter2(st); S.chapter3(st); S.chapter4(st)
+    S.talk(st, "mayor")
+    if st.bond_level < 4:
+        st.add_bond(200)
+    S.go(st, "lantern_hill")
+    game.scene.on_enter()
+    skip_dialogue(game)            # queued chapter outros play first
+    st.story.notices.clear()
+    run(game, 5)
+    game.scene.bar.focus_id("place:light")
+    assert game.scene.bar.current.id == "place:light" and game.scene.bar.current.enabled
+    run(game, 3, key(pygame.K_SPACE))
+    assert st.story.finished
+    run(game, 10)
+    assert game.scene.dialog is not None   # the ending conversation
+    skip_dialogue(game, 200)
+    run(game, 30)
+    assert game.scene_name == "ending"
+    run(game, 120)
+    run(game, 2, key(pygame.K_SPACE))
+    run(game, 30)
+    assert game.scene_name == "main" and not st.story.ending_pending
+    # post-game: daily wishes in the journal
+    run(game, 1, key(pygame.K_LSHIFT))     # X = journal
+    assert game.scene.journal.open
+    for _ in range(3):
+        run(game, 2, key(pygame.K_t))      # R = next tab
+    run(game, 2, key(pygame.K_ESCAPE))
+    assert not game.scene.journal.open
+    # saved and reloadable
+    import main_pygame
+    g2 = main_pygame.Game(screen=game.screen)
+    assert g2.state.story.finished and g2.state.story.daily.get("tasks")
+
+
+def test_journal_tabs_and_dialogue_box(game):
+    adopt(game)
+    run(game, 1, key(pygame.K_LSHIFT))
+    j = game.scene.journal
+    assert j.open and j.tab == 0
+    for tab in (1, 2, 0):
+        run(game, 2, key(pygame.K_t))
+        assert j.tab == tab
+    run(game, 1, key(pygame.K_t))
+    for _ in range(25):
+        run(game, 1, key(pygame.K_RIGHT))
+        run(game, 1, key(pygame.K_DOWN))
+    run(game, 1, key(pygame.K_ESCAPE))
+    from ui.dialogue_box import DialogueBox
+    done = []
+    box = DialogueBox([("mayor", "Hello there, friend!"), ("", "Bye.")], on_done=lambda: done.append(1))
+    box.handle_action("A")            # reveal line 1
+    assert box.index == 0 and box.shown == len("Hello there, friend!")
+    box.handle_action("A")
+    box.handle_action("B")
+    box.handle_action("B")
+    assert box.done and done == [1]
+
+
+def test_every_place_draws_at_night_with_townsfolk(game, monkeypatch):
+    monkeypatch.setenv("OURWORLD_HOUR", "23")
+    adopt(game)
+    unlock_all(game)
+    from core.world import LOCATIONS
+    from sprites import backdrops
+    for loc in LOCATIONS:
+        game.state.pet.location = loc
+        game.scene.on_enter()
+        run(game, 3)
+    assert len(backdrops._tinted) <= backdrops._TINT_MAX
+    assert game.state.time_of_day() == "night"

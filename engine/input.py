@@ -26,7 +26,7 @@ DEFAULT_KEYS = {
     "UP": ["up", "w"], "DOWN": ["down", "s"], "LEFT": ["left", "a"], "RIGHT": ["right", "d"],
     "A": ["space", "z", "j"],
     "B": ["left ctrl", "x", "k", "escape", "backspace"],
-    "X": ["left shift"], "Y": ["left alt"],
+    "X": ["left shift", "i"], "Y": ["left alt", "y"],
     "L": ["e", "page up", "q"], "R": ["t", "page down"],
     "START": ["return", "keypad enter"],
     "SELECT": ["right ctrl", "tab", "m"],

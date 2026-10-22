@@ -114,6 +114,10 @@ class MainScene(BaseScene):
         return bool(self.anim_kind or self.fx.texts or self.fx.parts or self.toast_t > 0
                     or self.dialog or self.state.story.notices)
 
+    @property
+    def overlay_open(self):
+        return bool(self.map.open or self.journal.open or self.dialog or self.pause)
+
     # -------------------------------------------------------------- story
     def open_dialog(self, lines):
         if not lines:

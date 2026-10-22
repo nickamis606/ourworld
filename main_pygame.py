@@ -133,7 +133,8 @@ class Game:
         if sm.last_saved_mono and sm.last_saved_mono != getattr(self, "_seen_save", None):
             self._seen_save = sm.last_saved_mono
             self._saved_flash = 1.2
-        if self._saved_flash and self._saved_flash > 0 and self.scene_name == "main":
+        if (self._saved_flash and self._saved_flash > 0 and self.scene_name == "main"
+                and not getattr(self.scene, "overlay_open", False)):
             from engine import assets
             t = assets.text("Saved", 16, (255, 255, 255))
             bg = pygame.Rect(0, 0, t.get_width() + 12, 18)

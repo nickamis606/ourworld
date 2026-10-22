@@ -138,4 +138,4 @@ def _draw(s, kind, col):
     if kind == "cat":        # towel turban
         pygame.draw.ellipse(s, (255, 250, 255), (cx - 22, head_y - 40, 44, 22))
     if kind == "fox":        # explorer scarf
-        pygame.draw.rect(s, (60, 140, 90), (cx - 22, body_y - 34, 44, 8), border_radius=4)
+        pygame.draw.rect(s, (60, 140, 90), (cx - 22, body_y - 24, 44, 8), border_radius=4)

@@ -246,7 +246,7 @@ class PetDash(MinigameBase):
         target.blit(self.font.render(f"SCORE: {self.score}", True, (30, 30, 30)), (18, 12))
 
         if self.show_instructions:
-            inst = self.small_font.render("SPACE / UP = Jump (Double Jump Available!)", True, (40, 40, 40))
+            inst = self.small_font.render("A or Up = Jump (press again to double jump!)", True, (40, 40, 40))
             target.blit(inst, (SCREEN_WIDTH // 2 - inst.get_width() // 2, 65))
 
         if self.game_over:
@@ -257,7 +257,7 @@ class PetDash(MinigameBase):
             target.blit(go, (SCREEN_WIDTH // 2 - go.get_width() // 2, 130))
             fs = self.font.render(f"Final Score: {self.score}", True, (255, 255, 255))
             target.blit(fs, (SCREEN_WIDTH // 2 - fs.get_width() // 2, 195))
-            again = self.font.render("R = Try Again    ESC = Back to Arcade", True, (200, 255, 200))
+            again = self.font.render("Tallying your prize...", True, (200, 255, 200))
             target.blit(again, (SCREEN_WIDTH // 2 - again.get_width() // 2, 260))
 
 

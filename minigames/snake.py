@@ -169,7 +169,8 @@ class SnakeGame(MinigameBase):
         pygame.draw.ellipse(target, TREAT_COLOR, (tx*CELL_SIZE+2, ty*CELL_SIZE+2, CELL_SIZE-4, CELL_SIZE-4))
 
         target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT_COLOR), (12, 8))
-        target.blit(self.small_font.render("OURWORLD ARCADE • SNAKE", True, ACCENT), (SCREEN_WIDTH - 220, 10))
+        tag = self.small_font.render("SNAKE", True, ACCENT)
+        target.blit(tag, (SCREEN_WIDTH - tag.get_width() - 12, 10))
 
         if self.game_over:
             over = self.big_font.render("GAME OVER", True, (255, 180, 180))

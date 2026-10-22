@@ -502,30 +502,29 @@ class FroggerGame(MinigameBase):
         level_text = self.big_font.render(f"LEVEL {self.level}", True, ACCENT)
         target.blit(level_text,
                      (SCREEN_WIDTH // 2 - level_text.get_width() // 2, 8))
-        target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT),
-                     (12, 8 + level_text.get_height() + 4))
+        target.blit(self.font.render(f"SCORE: {self.score}", True, TEXT), (12, 6))
         if self.heart_flash > 0:
             pulse = 0.5 + 0.5 * ((now // 100) % 2)
             heart_color = (int(255 * pulse + 250 * (1 - pulse)),
                            int(80 * pulse + 250 * (1 - pulse)),
                            int(80 * pulse + 250 * (1 - pulse)))
-            heart_text = f"LIVES: {'♥' * self.lives}"
+            heart_text = f"LIVES: {self.lives}"
             target.blit(self.small_font.render(heart_text, True, heart_color),
                         (12, 36))
         else:
-            target.blit(self.small_font.render(f"LIVES: {'♥' * self.lives}", True, TEXT),
+            target.blit(self.small_font.render(f"LIVES: {self.lives}", True, TEXT),
                          (12, 36))
-        target.blit(self.small_font.render("OURWORLD ARCADE • FROGGER", True, ACCENT),
-                     (SCREEN_WIDTH - 250, 10))
+        tag = self.small_font.render("FROGGER", True, ACCENT)
+        target.blit(tag, (SCREEN_WIDTH - tag.get_width() - 12, 10))
 
         # Home progress
         filled = sum(self.homes)
         target.blit(self.small_font.render(f"HOMES: {filled}/5", True, TEXT),
-                     (SCREEN_WIDTH - 120, 36))
+                     (SCREEN_WIDTH - 110, 36))
 
         if self.show_instructions:
             inst = self.small_font.render(
-                "Arrows/WASD: Move   |   Fill all homes to advance level!",
+                "D-pad: hop   |   Fill all 5 homes to advance!",
                 True, (200, 230, 200))
             target.blit(inst,
                         (SCREEN_WIDTH // 2 - inst.get_width() // 2, 65))
@@ -554,7 +553,7 @@ class FroggerGame(MinigameBase):
             msg = self.big_font.render("GAME OVER", True, (255, 120, 120))
             target.blit(msg,
                         (SCREEN_WIDTH // 2 - msg.get_width() // 2, 160))
-            sub = self.font.render("R = Try Again    ESC = Quit",
+            sub = self.font.render("Tallying your prize...",
                                    True, (220, 200, 200))
             target.blit(sub,
                         (SCREEN_WIDTH // 2 - sub.get_width() // 2,

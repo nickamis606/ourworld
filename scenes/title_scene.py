@@ -107,7 +107,7 @@ class TitleScene(BaseScene):
             sp = self.sprites[self.state.pet.species_id]
             sp.set_feet(320, 270)
             sp.draw(surf, {"dy": -10 * abs(math.sin(self.t * 3))})
-            self.menu.draw(surf, (320, 360), veil=False)
+            self.menu.draw(surf, (320, 360), veil=False, box=False)
             hint_bar(surf, [("D-pad", "Choose"), ("A", "OK")])
             return
         sub = assets.text("Choose your companion", 28, (110, 70, 50), bold=True)

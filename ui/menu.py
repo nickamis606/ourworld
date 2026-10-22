@@ -32,15 +32,16 @@ class Menu:
                 return i
         return None
 
-    def draw(self, surface, center=(320, 240), veil=True):
+    def draw(self, surface, center=(320, 240), veil=True, box=True):
         if veil:
             surface.blit(panel((640, 480), (10, 10, 20, 150), 0, None), (0, 0))
-        h = len(self.options) * 44 + 80
-        box = pygame.Rect(0, 0, self.width, h)
-        box.center = center
-        surface.blit(panel(box.size, (255, 250, 240, 245), 16, (120, 90, 70)), box.topleft)
-        t = assets.text(self.title, 30, (80, 60, 50), bold=True)
-        surface.blit(t, t.get_rect(center=(box.centerx, box.y + 26)))
+        if box:
+            h = len(self.options) * 44 + 80
+            rect = pygame.Rect(0, 0, self.width, h)
+            rect.center = center
+            surface.blit(panel(rect.size, (255, 250, 240, 245), 16, (120, 90, 70)), rect.topleft)
+            t = assets.text(self.title, 30, (80, 60, 50), bold=True)
+            surface.blit(t, t.get_rect(center=(rect.centerx, rect.y + 26)))
         for i, ((oid, label), r) in enumerate(zip(self.options, self.rects(center))):
             sel = i == self.index
             pygame.draw.rect(surface, (255, 230, 170) if sel else (240, 232, 220), r, border_radius=10)

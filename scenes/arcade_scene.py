@@ -117,7 +117,7 @@ class ArcadeScene(BaseScene):
             elif self.phase == "play":
                 self.handle_action("A")
             elif self.phase == "result":
-                i = self.menu.hit(e.pos, (320, 330))
+                i = self.menu.hit(e.pos, (320, 322))
                 if i is not None:
                     self.menu.index = i
                     self.handle_action("A")
@@ -125,7 +125,7 @@ class ArcadeScene(BaseScene):
     # ------------------------------------------------------------- update
     def update(self, dt):
         self.t += dt
-        self.state.pet.needs  # needs do not decay while a minigame runs (fair play)
+        # needs do not decay while a minigame runs (fair play)
         if self.phase == "play":
             self.minigame.update(dt)
             over = getattr(self.minigame, "game_over", False) or not getattr(self.minigame, "running", True)
@@ -207,4 +207,4 @@ class ArcadeScene(BaseScene):
                 surf.blit(icon(need, 24), (210, y))
                 surf.blit(assets.text(f"{'+' if v > 0 else ''}{int(round(v))} {label}", 24, col, bold=True), (242, y + 4))
                 y += 30
-        self.menu.draw(surf, (320, 330), veil=False)
+        self.menu.draw(surf, (320, 322), veil=False, box=False)

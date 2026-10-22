@@ -433,8 +433,8 @@ class MainScene(BaseScene):
         if pot is not None:
             surf.blit(pot, (70, 262))
         # bunting across the top of the room
-        for i in range(12):
-            x = 40 + i * 48
-            y = 60 + int(10 * math.sin(i / 11 * math.pi))
+        for i in range(8):
+            x = 236 + i * 46
+            y = 50 + int(10 * math.sin(i / 7 * math.pi))
             col = [(250, 120, 170), (250, 210, 70), (140, 200, 250)][i % 3]
             pygame.draw.polygon(surf, col, [(x, y), (x + 30, y), (x + 15, y + 22)])

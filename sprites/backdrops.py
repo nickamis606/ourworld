@@ -3,7 +3,7 @@
 Each backdrop is rendered ONCE into an opaque 640x480 surface and cached, so
 drawing a location costs a single blit per frame. A tiny ambient layer
 (clouds, neon flicker, sparkles...) is drawn on top for life.
-Home uses the painted asset pack; the other five places are procedural so
+Home uses the painted asset pack; the other eight places are procedural so
 they work with zero art files and cost ~0 bytes on disk.
 """
 import math
@@ -235,8 +235,139 @@ def _arcade(surf):
                            (270 + k * 32, 232), 10)
 
 
+def _pond(surf):
+    _vgrad(surf, (0, 0, W, 200), (110, 190, 245), (205, 236, 252))
+    pygame.draw.circle(surf, (255, 236, 150), (90, 80), 30)
+    _cloud(surf, 380, 70, 0.9); _cloud(surf, 540, 110, 0.6)
+    # far shore with reeds and trees
+    pygame.draw.ellipse(surf, (110, 176, 106), (-80, 160, 800, 90))
+    for x, y, sc in ((40, 200, 0.7), (150, 190, 0.5), (520, 195, 0.6), (610, 205, 0.8)):
+        _tree(surf, x, y, sc, (60, 150, 80))
+    # water
+    _vgrad(surf, (0, 205, W, 120), (70, 150, 200), (40, 110, 170))
+    rng = random.Random(42)
+    for _ in range(26):
+        x, y = rng.randint(0, W), rng.randint(215, 318)
+        pygame.draw.line(surf, (150, 205, 240), (x, y), (x + rng.randint(10, 26), y), 1)
+    # lily pads
+    for x, y in ((90, 300), (140, 285), (470, 270)):
+        pygame.draw.ellipse(surf, (80, 170, 90), (x, y, 34, 12))
+        pygame.draw.line(surf, (40, 110, 170), (x + 17, y + 6), (x + 30, y + 2), 2)
+    _flower(surf, 110, 296, (255, 170, 210), 3)
+    # sandy beach
+    pygame.draw.ellipse(surf, (240, 216, 160), (-100, 300, 860, 120))
+    _vgrad(surf, (0, 340, W, H - 340), (240, 216, 160), (222, 192, 136))
+    for i in range(60):
+        r = random.Random(i * 13)
+        pygame.draw.circle(surf, (210, 180, 128), (r.randint(0, W), r.randint(345, H)), 1)
+    # dock
+    pygame.draw.polygon(surf, (150, 104, 64), [(470, 330), (640, 330), (640, 352), (460, 352)])
+    for x in range(476, 640, 22):
+        pygame.draw.line(surf, (120, 80, 48), (x, 330), (x - 2, 352), 2)
+    for x in (480, 560, 630):
+        pygame.draw.rect(surf, (110, 72, 42), (x - 4, 352, 8, 30))
+    # beach umbrella + towel
+    pygame.draw.line(surf, (240, 240, 240), (400, 380), (390, 286), 4)
+    pygame.draw.polygon(surf, (240, 80, 90), [(330, 300), (452, 272), (390, 262)])
+    pygame.draw.polygon(surf, (255, 255, 255), [(360, 293), (420, 279), (390, 262)])
+    pygame.draw.rect(surf, (70, 150, 220), (340, 372, 90, 18), border_radius=4)
+    pygame.draw.line(surf, (250, 250, 250), (340, 381), (430, 381), 3)
+    # bucket
+    pygame.draw.polygon(surf, (250, 200, 60), [(560, 372), (588, 372), (584, 396), (564, 396)])
+    pygame.draw.arc(surf, (60, 60, 60), (560, 360, 28, 24), 0, math.pi, 2)
+    _sign(surf, "SUNNY POND", 520, 150, (40, 130, 190))
+
+
+def _library(surf):
+    _vgrad(surf, (0, 0, W, 320), (120, 82, 60), (96, 62, 44))
+    # wainscot
+    pygame.draw.rect(surf, (80, 50, 34), (0, 250, W, 80))
+    for x in range(0, W, 64):
+        pygame.draw.rect(surf, (96, 62, 42), (x + 6, 258, 52, 64), 2, border_radius=3)
+    # arched window
+    win = pygame.Rect(270, 70, 100, 150)
+    pygame.draw.rect(surf, (200, 230, 250), (win.x, win.y + 40, win.w, win.h - 40))
+    pygame.draw.ellipse(surf, (200, 230, 250), (win.x, win.y, win.w, 84))
+    pygame.draw.line(surf, (90, 60, 40), (win.centerx, win.y), (win.centerx, win.bottom), 4)
+    pygame.draw.line(surf, (90, 60, 40), (win.x, win.y + 100), (win.right, win.y + 100), 4)
+    pygame.draw.rect(surf, (90, 60, 40), (win.x - 6, win.bottom, win.w + 12, 10))
+    # bookshelves both sides
+    rng = random.Random(7)
+    spines = [(190, 60, 60), (60, 110, 180), (70, 150, 90), (220, 170, 60), (140, 80, 160), (230, 120, 80)]
+    for sx in (20, 400):
+        pygame.draw.rect(surf, (70, 42, 26), (sx, 60, 220, 270), border_radius=4)
+        for row in range(4):
+            y = 74 + row * 62
+            pygame.draw.rect(surf, (52, 30, 18), (sx + 10, y, 200, 52))
+            x = sx + 12
+            while x < sx + 200:
+                w = rng.randint(8, 16)
+                h = rng.randint(34, 50)
+                if x + w > sx + 208:
+                    break
+                pygame.draw.rect(surf, rng.choice(spines), (x, y + 52 - h, w, h))
+                pygame.draw.line(surf, (255, 240, 200), (x + 2, y + 52 - h + 6), (x + w - 3, y + 52 - h + 6), 1)
+                x += w + 1
+            pygame.draw.rect(surf, (90, 56, 34), (sx + 6, y + 52, 208, 6))
+    # floor + rug
+    _vgrad(surf, (0, 330, W, H - 330), (150, 104, 66), (122, 82, 50))
+    for y in range(340, H, 22):
+        pygame.draw.line(surf, (128, 88, 54), (0, y), (W, y), 1)
+    pygame.draw.ellipse(surf, (150, 60, 80), (200, 340, 260, 60))
+    pygame.draw.ellipse(surf, (190, 100, 110), (220, 348, 220, 44), 3)
+    # reading armchair + lamp
+    pygame.draw.rect(surf, (60, 110, 120), (500, 290, 110, 70), border_radius=14)
+    pygame.draw.rect(surf, (80, 140, 150), (510, 270, 90, 50), border_radius=12)
+    pygame.draw.line(surf, (60, 50, 40), (80, 380), (80, 250), 4)
+    pygame.draw.polygon(surf, (250, 220, 140), [(56, 260), (104, 260), (92, 228), (68, 228)])
+    pygame.draw.ellipse(surf, (60, 50, 40), (60, 374, 40, 10))
+    _sign(surf, "LIBRARY", 555, 226, (130, 80, 150))
+
+
+def _spa(surf):
+    _vgrad(surf, (0, 0, W, 320), (200, 236, 232), (176, 220, 214))
+    # wall tiles
+    for y in range(60, 320, 32):
+        pygame.draw.line(surf, (160, 206, 200), (0, y), (W, y), 1)
+    for x in range(0, W, 32):
+        pygame.draw.line(surf, (160, 206, 200), (x, 60), (x, 320), 1)
+    # mirror
+    pygame.draw.ellipse(surf, (230, 200, 120), (70, 80, 110, 140))
+    pygame.draw.ellipse(surf, (220, 240, 250), (78, 88, 94, 124))
+    pygame.draw.line(surf, (255, 255, 255), (100, 110), (120, 96), 3)
+    # towel shelf
+    pygame.draw.rect(surf, (200, 160, 120), (470, 110, 140, 8))
+    for i, c in enumerate(((250, 170, 210), (255, 255, 255), (170, 210, 250))):
+        pygame.draw.rect(surf, c, (480 + i * 42, 82, 38, 28), border_radius=6)
+    # plant
+    pygame.draw.polygon(surf, (220, 150, 110), [(560, 300), (600, 300), (594, 336), (566, 336)])
+    for a in (-0.9, -0.4, 0.0, 0.4, 0.9):
+        pygame.draw.line(surf, (70, 160, 90), (580, 300), (580 + math.sin(a) * 40, 300 - math.cos(a) * 60), 5)
+    # floor
+    for y in range(320, H, 40):
+        for x in range(0, W, 40):
+            c = (236, 236, 244) if ((x + y) // 40) % 2 else (214, 220, 232)
+            pygame.draw.rect(surf, c, (x, y, 40, 40))
+    # bathtub with bubbles
+    pygame.draw.ellipse(surf, (250, 250, 255), (300, 270, 260, 70))
+    pygame.draw.rect(surf, (250, 250, 255), (300, 300, 260, 60), border_bottom_left_radius=30,
+                     border_bottom_right_radius=30)
+    pygame.draw.ellipse(surf, (120, 200, 230), (314, 278, 232, 44))
+    rng = random.Random(3)
+    for _ in range(18):
+        pygame.draw.circle(surf, (255, 255, 255), (rng.randint(320, 540), rng.randint(276, 302)), rng.randint(6, 13))
+    for x in (330, 530):
+        pygame.draw.rect(surf, (230, 200, 120), (x - 6, 356, 12, 14), border_radius=3)
+    pygame.draw.line(surf, (190, 190, 200), (540, 268), (540, 236), 5)
+    pygame.draw.line(surf, (190, 190, 200), (540, 236), (520, 236), 5)
+    # bath mat
+    pygame.draw.rect(surf, (250, 170, 210), (160, 376, 150, 24), border_radius=10)
+    _sign(surf, "PAWS & CLAWS SPA", 420, 180, (200, 100, 160))
+
+
 BUILDERS = {"home": _home, "backyard": _backyard, "park": _park,
-            "sweeties_candy_shop": _candy, "gens_garden": _gens, "arcade": _arcade}
+            "sweeties_candy_shop": _candy, "gens_garden": _gens, "arcade": _arcade,
+            "pond": _pond, "library": _library, "spa": _spa}
 
 
 # ---------------------------------------------------------------- ambient
@@ -269,6 +400,33 @@ def draw_ambient(surf, location: str, t: float) -> None:
             by = 150 + math.sin(t * 1.7 + i) * 18
             pygame.draw.circle(surf, (250, 210, 40), (int(bx), int(by)), 4)
             pygame.draw.circle(surf, (40, 40, 40), (int(bx) + 2, int(by)), 2)
+    elif location == "pond":
+        # duck paddling along + glinting ripples
+        dx = 40 + (t * 18) % 600
+        dy = 250 + math.sin(t * 2) * 2
+        pygame.draw.ellipse(surf, (255, 255, 255), (dx - 14, dy - 6, 28, 14))
+        pygame.draw.circle(surf, (255, 255, 255), (int(dx + 10), int(dy - 8)), 6)
+        pygame.draw.polygon(surf, (250, 170, 40), [(dx + 15, dy - 9), (dx + 22, dy - 7), (dx + 15, dy - 5)])
+        pygame.draw.circle(surf, (20, 20, 20), (int(dx + 11), int(dy - 10)), 1)
+        for i in range(4):
+            k = (t * 0.5 + i * 0.25) % 1.0
+            x = 60 + i * 150
+            pygame.draw.ellipse(surf, (190, 225, 250), (x - 20 * k, 300 - 4 * k, 40 * k + 2, 8 * k + 2), 1)
+    elif location == "library":
+        # lamp glow flicker + a slowly drifting page
+        g = 2 + int(2 * math.sin(t * 5))
+        pygame.draw.circle(surf, (255, 230, 150), (80, 262), 10 + g, 2)
+        k = (t * 0.12) % 1.0
+        px, py = 140 + k * 360, 100 + math.sin(t * 1.5) * 18 + k * 200
+        pygame.draw.polygon(surf, (250, 245, 230), [(px, py), (px + 14, py - 4), (px + 16, py + 8), (px + 2, py + 12)])
+    elif location == "spa":
+        # steam rising from the tub
+        for i in range(5):
+            k = (t * 0.35 + i * 0.2) % 1.0
+            x = 340 + i * 44 + math.sin(t * 2 + i) * 6
+            r = 4 + int(k * 10)
+            if k < 0.85:
+                pygame.draw.circle(surf, (245, 250, 252), (int(x), int(270 - k * 120)), r, 2)
     elif location == "home":
         # sunbeam dust motes in the window
         for i in range(4):

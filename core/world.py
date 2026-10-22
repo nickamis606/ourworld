@@ -38,9 +38,46 @@ LOCATIONS = {
         "name": "Arcade", "desc": "Lights and games. Win coins!",
         "color": (100, 149, 237), "icon": "arcade", "type": "entertainment", "map": (2, 1),
     },
+    "pond": {
+        "name": "Sunny Pond", "short": "Pond", "desc": "Sand, ducks and cool water. Swimming cleans and cheers.",
+        "color": (40, 140, 190), "icon": "pond", "type": "recreation", "map": (0, 2),
+    },
+    "library": {
+        "name": "Bookworm Library", "short": "Library", "desc": "Quiet stories lift the mood and rest the mind.",
+        "color": (130, 80, 150), "icon": "library", "type": "civic", "map": (1, 2),
+    },
+    "spa": {
+        "name": "Paws & Claws Spa", "short": "Spa", "desc": "Pampering for a price: the full refresh.",
+        "color": (200, 100, 160), "icon": "spa", "type": "service", "map": (2, 2),
+    },
 }
 
-MAP_COLS, MAP_ROWS = 3, 2
+MAP_COLS, MAP_ROWS = 3, 3
+
+# One special action per new place. Pure data; GameState applies the rules.
+#   need: refuse when this need is already full; min_energy: refuse when tired;
+#   cost: coins; cooldown: seconds before it can be done again.
+PLACE_ACTIONS = {
+    "swim": {"location": "pond", "label": "Swim", "icon": "swim",
+             "deltas": {"cleanliness": 28, "happiness": 12, "energy": -10, "hunger": -5},
+             "need": "cleanliness", "min_energy": 15, "cost": 0, "cooldown": 0,
+             "msg": "{name} splashed around. Wheee!",
+             "refusal": "{name} is already clean and dry."},
+    "read": {"location": "library", "label": "Read", "icon": "read",
+             "deltas": {"happiness": 14, "energy": 6},
+             "need": "happiness", "min_energy": 0, "cost": 0, "cooldown": 30,
+             "msg": "{name} loved that story!",
+             "refusal": "{name} is too giddy to sit still and read."},
+    "pamper": {"location": "spa", "label": "Pamper", "icon": "spa",
+               "deltas": {"cleanliness": 45, "energy": 20, "happiness": 10},
+               "need": "cleanliness", "min_energy": 0, "cost": 18, "cooldown": 0,
+               "msg": "Bubbles, brushing and a nap. {name} feels brand new!",
+               "refusal": "{name} is already pampered and spotless."},
+}
+
+
+def place_actions_for(location: str) -> list:
+    return [k for k, v in PLACE_ACTIONS.items() if v["location"] == location]
 
 
 def location_at(col: int, row: int) -> str | None:

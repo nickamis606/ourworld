@@ -26,10 +26,12 @@ from ui.stats_bar import StatsBar
 
 CARE_LABELS = {"feed": "Feed", "play": "Play", "clean": "Clean", "rest": "Rest"}
 CARE_COLORS = {"feed": (226, 128, 50), "play": (60, 160, 90), "clean": (60, 130, 200), "rest": (130, 100, 200)}
-FEET = {"home": (320, 378), "backyard": (330, 352)}
+FEET = {"home": (320, 378), "backyard": (330, 352), "pond": (250, 356), "library": (330, 366), "spa": (250, 364)}
 DEFAULT_FEET = (320, 372)
 MOOD_TEXT = {"happy": ("Happy", (60, 170, 80)), "okay": ("Okay", (200, 150, 30)), "sad": ("Sad", (210, 70, 70))}
 TOAST_SECS = 2.6
+PLACE_COLORS = {"swim": (40, 140, 200), "read": (140, 90, 170), "pamper": (210, 100, 160)}
+PLACE_ANIM = {"swim": "clean", "read": "rest", "pamper": "clean"}
 
 
 def _fmt_deltas(d):
@@ -132,13 +134,25 @@ class MainScene(BaseScene):
                 short = it["name"].replace("Sunflower Seeds", "Sunflwr").replace(" Seeds", "").replace("Candy ", "")
                 items.append(ActionItem("buy:" + it["key"], short, it["key"], desc, afford,
                                         str(it["price"]), (200, 70, 110) if it.get("eat") else (70, 140, 110)))
-        elif loc == "arcade":
+        for key in world.place_actions_for(loc):
+            spec = world.PLACE_ACTIONS[key]
+            ok, why = s.can_place_action(key)
+            cost = f" - {spec['cost']} coins" if spec["cost"] else ""
+            cd = f", then {spec['cooldown']}s break" if spec["cooldown"] else ""
+            desc = f"{spec['label']}: {_fmt_deltas(spec['deltas'])}{cost}{cd}" if ok else why
+            badge = str(spec["cost"]) if spec["cost"] else ""
+            left = p.cooldowns.get(key, 0)
+            if left > 0:
+                badge = f"{int(left) + 1}s"
+            items.append(ActionItem("place:" + key, spec["label"], spec["icon"], desc, ok, badge,
+                                    PLACE_COLORS.get(key, (90, 120, 170))))
+        if loc == "arcade":
             from minigames import GAME_INFO
-            for key, info in GAME_INFO.items():
-                best = s.save_manager.get_high_score(key)
-                items.append(ActionItem("game:" + key, info["name"].replace("Pet ", ""), key,
-                                        f"{info['name']} - {info['how']}" + (f" Best: {best}" if best else ""),
-                                        True, str(best) if best else "", info["color"]))
+            best = max([s.save_manager.get_high_score(k) for k in GAME_INFO] + [0])
+            items.append(ActionItem("games", "Games", "games",
+                                    f"Pick one of {len(GAME_INFO)} arcade games - win coins!"
+                                    + (f" Top score: {best}" if best else ""), True, str(len(GAME_INFO)),
+                                    (120, 70, 180)))
         items.append(ActionItem("map", "Map", "map", "Open the neighborhood map (Select / M)", True, color=(80, 120, 190)))
         self.bar.set_items(items)
 
@@ -252,15 +266,19 @@ class MainScene(BaseScene):
             if res.get("success"):
                 self.fx.float_text(f"+{res['coins']} coins", self.pet.feet.x + 60, self.pet.feet.y - 150,
                                    NEED_COLORS["coins"])
+        elif item_id.startswith("place:"):
+            key = item_id[6:]
+            res = s.perform_place_action(key)
+            self._feedback(res, PLACE_ANIM.get(key, "play"))
         elif item_id == "decorate":
             res = s.decorate_home()
             self._feedback(res, "decorate")
-        elif item_id.startswith("game:"):
+        elif item_id == "games" or item_id.startswith("game:"):
             if s.pet.needs.energy < 8:
                 self.say(f"{s.pet.name} is too tired for games. Rest first!", bad=True)
                 self._start_anim("sad", 0.6)
                 return
-            self.game.switch("arcade", game=item_id[5:])
+            self.game.switch("arcade", game=item_id[5:] if item_id.startswith("game:") else None)
             return
         elif item and not item.enabled:
             self.say(item.desc, bad=True)
@@ -348,6 +366,9 @@ class MainScene(BaseScene):
                     labels[key] = "Play bonus"
                 elif world.shop_items(key):
                     labels[key] = "Shop"
+                for act in world.place_actions_for(key):
+                    spec = world.PLACE_ACTIONS[act]
+                    labels[key] = spec["label"] + (f" ({spec['cost']}c)" if spec["cost"] else "")
             self.map.draw(surf, loc, labels)
         elif self.pause:
             self.pause.draw(surf)

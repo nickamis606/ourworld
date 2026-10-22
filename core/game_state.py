@@ -13,7 +13,7 @@ from .savegame import SaveManager
 from .rewards import minigame_reward
 from . import world
 from .world import (LOCATIONS, PLANTS, SEED_TO_PLANT, MAX_STAGE, GARDEN_SLOTS,
-                    DECORATION_SECS, FLOWERS_TO_DECORATE)
+                    DECORATION_SECS, FLOWERS_TO_DECORATE, PLACE_ACTIONS)
 
 DEFAULT_SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                  "saves", "savegame.json")
@@ -34,6 +34,9 @@ LOCATION_BONUS = {
     "park": ("play", {"happiness": 10}, "Park bonus!"),
     "home": ("rest", {"energy": 10}, "Cozy home bonus!"),
     "backyard": ("clean", {"happiness": 6}, "Fresh-air bonus!"),
+    "pond": ("play", {"happiness": 6, "cleanliness": 4}, "Splashy bonus!"),
+    "library": ("rest", {"happiness": 6}, "Quiet-corner bonus!"),
+    "spa": ("clean", {"cleanliness": 10}, "Spa bonus!"),
 }
 FULL_THRESHOLD = 96.0
 AUTOSAVE_EVERY = 60.0  # seconds of play between background autosaves
@@ -63,6 +66,10 @@ class GameState:
             mult["happiness"] = max(0.4, 1.0 - 0.08 * mature)
         if loc == "arcade":
             mult["energy"] = 1.3
+        if loc == "library":
+            mult["energy"] = 0.7      # calm place: tires you out more slowly
+        if loc == "pond":
+            mult["cleanliness"] = 1.4  # sand gets everywhere
         return mult
 
     def tick(self, dt: float) -> None:
@@ -75,6 +82,7 @@ class GameState:
         self._grow_garden(dt)
         if self.pet.decoration_left > 0:
             self.pet.decoration_left = max(0.0, self.pet.decoration_left - dt)
+        self._tick_cooldowns(dt)
         self._autosave_timer += dt
         if self._autosave_timer >= AUTOSAVE_EVERY:
             self._autosave_timer = 0.0
@@ -98,6 +106,14 @@ class GameState:
                 setattr(self.pet.needs, n, floor)
         self._grow_garden(seconds)
         self.pet.decoration_left = max(0.0, self.pet.decoration_left - seconds)
+        self._tick_cooldowns(seconds)
+
+    def _tick_cooldowns(self, dt: float) -> None:
+        cds = self.pet.cooldowns
+        for k in list(cds):
+            cds[k] -= dt
+            if cds[k] <= 0:
+                del cds[k]
 
     def _grow_garden(self, dt: float) -> None:
         for plant in self.pet.garden:
@@ -176,6 +192,40 @@ class GameState:
         }[action]
         return {"success": True, "msg": msg, "deltas": applied, "bonus": bonus,
                 "extra": 10 if bonus else 0}
+
+    # ------------------------------------------------------- place actions
+    def can_place_action(self, key: str) -> tuple:
+        spec = PLACE_ACTIONS.get(key)
+        if spec is None:
+            return False, "Unknown action"
+        name = self.pet.name
+        if self.pet.location != spec["location"]:
+            where = LOCATIONS[spec["location"]]["name"]
+            return False, f"You can only do that at {where}"
+        left = self.pet.cooldowns.get(key, 0)
+        if left > 0:
+            return False, f"{name} needs a little break first ({int(left) + 1}s)"
+        if getattr(self.pet.needs, spec["need"]) >= FULL_THRESHOLD:
+            return False, spec["refusal"].format(name=name)
+        if self.pet.needs.energy < spec["min_energy"]:
+            return False, f"{name} is too tired for that."
+        if self.pet.coins < spec["cost"]:
+            return False, f"Not enough coins! ({spec['cost']} needed)"
+        return True, ""
+
+    def perform_place_action(self, key: str) -> dict:
+        ok, why = self.can_place_action(key)
+        if not ok:
+            return {"success": False, "msg": why, "deltas": {}}
+        spec = PLACE_ACTIONS[key]
+        self.spend_coins(spec["cost"])
+        applied = self.pet.needs.apply(spec["deltas"])
+        if spec["cooldown"]:
+            self.pet.cooldowns[key] = float(spec["cooldown"])
+        self.pet.care_count += 1
+        self.trigger_auto_save()
+        return {"success": True, "msg": spec["msg"].format(name=self.pet.name),
+                "deltas": applied, "cost": spec["cost"]}
 
     def earn_coins(self, amount: int) -> None:
         self.pet.coins = max(0, min(99999, self.pet.coins + int(amount)))

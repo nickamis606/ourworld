@@ -20,6 +20,7 @@ class PetState:
     decoration_left: float = 0.0        # seconds of home decoration remaining
     play_seconds: float = 0.0           # total active time
     care_count: int = 0
+    cooldowns: Dict[str, float] = field(default_factory=dict)  # place action -> secs left
 
     # -- derived --------------------------------------------------------
     @property
@@ -38,6 +39,7 @@ class PetState:
             "decoration_left": round(self.decoration_left, 2),
             "play_seconds": round(self.play_seconds, 2),
             "care_count": self.care_count,
+            "cooldowns": {k: round(v, 2) for k, v in self.cooldowns.items() if v > 0},
         }
 
     @classmethod
@@ -81,4 +83,8 @@ class PetState:
             pet.decoration_left = float(DECORATION_SECS)
         pet.play_seconds = max(0.0, float(d.get("play_seconds", 0.0) or 0.0))
         pet.care_count = max(0, int(d.get("care_count", 0) or 0))
+        cds = d.get("cooldowns") or {}
+        if isinstance(cds, dict):
+            pet.cooldowns = {str(k): float(v) for k, v in cds.items()
+                             if isinstance(v, (int, float)) and v > 0}
         return pet

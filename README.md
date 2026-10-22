@@ -6,6 +6,11 @@ A cozy hybrid of Tamagotchi and a simplified The Sims — care for a cute virtua
 Wish Lantern went dark. Help six townsfolk, earn six Sparks, and light the lantern for the
 Festival of Lights. After the ending, Daily Wishes keep the town busy.
 
+**Also:** chiptune music, pets that grow up and have personalities, seasons and holiday
+events, fishing with a Fish Book, a Weekly arcade Challenge, 2-player hot-seat, home
+decorating, more pets after the ending, photos, and parent settings (play-time reminder,
+slow needs) behind a hold-A gate.
+
 **Current Status:** Pygame build for 640x480 Linux handhelds (Miyoo Mini, Anbernic RG). The old Tkinter prototype lives in git history.
 
 This project is developed using the persistent **OurWorld skill**, which maintains the full game design, current implementation state, and iteration workflow.
@@ -20,7 +25,8 @@ python main_pygame.py               # add --fullscreen on a handheld
 ```
 
 Controls: D-pad/arrows move, A/Space confirms, B/Esc goes back, Select/M opens the
-map, X/Shift/I opens the Journal, Y/Alt talks to whoever is here, Start/Enter pauses. Full table and device notes: `references/current_state.md`.
+map, X/Shift/I opens the Journal, Y/Alt talks to whoever is here, Start/Enter pauses
+(Settings, photo, pets, Quit). Hold L+R for a photo. Full table and device notes: `references/current_state.md`.
 
 Tests: `pip install pytest && python -m pytest -q` (headless-safe).
 

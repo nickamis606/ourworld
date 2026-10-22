@@ -1,5 +1,77 @@
 # Changelog
 
+## [Unreleased] - 2026-10-17 (round 4) - "do it all"
+
+### Added
+- **Sound and music.** `tools/make_audio.py` synthesizes 9 chiptune loops (home, town,
+  shop, arcade, calm, woods, festival, night, winter) and 17 sound effects as 8-bit mono
+  11 kHz WAVs (~1 MB, deterministic, nothing copyrighted). `engine/audio.py` picks a loop
+  per place, time of day, season and festival and plays SFX for actions, coins, quests,
+  stickers, level-ups, dialogue and the UI. It never crashes: if the mixer can't open,
+  files are missing, or `OURWORLD_NOSOUND=1` is set, every call is a no-op.
+- **Settings** (Pause > Settings): music volume, sound-effect volume, mute.
+  **Parent settings** sit behind a 2-second hold of A: a play-time reminder
+  (off/15/30/45/60 min, shown as a gentle story-style dialogue) and "slow needs"
+  (needs drop at half speed). Saved in the save file.
+- **Photo mode:** Pause > Take a photo, or hold L+R. Saves a HUD-free PNG to
+  `photos/` next to the game (`OURWORLD_PHOTOS` overrides), with a flash and a click.
+- **Quit** in the pause menu ("Quit game", saves first) and on the title screen,
+  for handhelds without a keyboard. **Knulli/Batocera launcher**
+  `tools/knulli/OurWorld.pygame` + install notes in the README.
+- **Growth stages:** baby (bond Lv 1-2), kid (3-4), grown-up (5+). The sprite grows and
+  gets a sprout / scarf / crown, with a short celebration the first time.
+- **Personalities:** Playful, Sleepy, Picky, Curious (pick one or "Surprise me!" when
+  adopting). Liked actions give extra joy and bond, needs drift differently, picky pets
+  eat a little less of plain food, and one favorite wish is always in the Daily Wishes.
+  Idle emote bubbles depend on personality, stage and mood. Old saves get a stable trait
+  rolled from the pet's name.
+- **Gentle stakes:** when needs stay low the pet gets mopey: it droops, shows a rain
+  cloud, and the place looks a little gray. Care perks it back up (with a bond bonus).
+  Nothing is ever lost and nothing bad happens.
+- **Seasons and calendar events** (`core/calendar.py`, `OURWORLD_DATE=YYYY-MM-DD` to
+  test): fall/winter/spring/summer tints, props baked into the cached backdrops, and
+  light falling leaves/snow/petals outdoors. Events: Harvest Fair (Oct 10-31: double
+  harvest coins, pumpkins and bunting in the Town Square), Snow Day (Dec 15-Jan 10:
+  build a snowman in the Park; it stays there), Spring Egg Hunt (Mar 25-Apr 20: find 5
+  eggs), Summer Splash (Jul 1-Aug 15: swim 3 times). Each one has a goal in the
+  Journal and gives coins, a sticker and a furniture prize.
+- **Fishing at Sunny Pond** (Fish tile): time the cast, wait for the bite, press A, then
+  hold Left/Right to keep the fish in your green zone. 5 casts per trip, 11 fish
+  (night-only Moonfish, winter Icefish, summer Sunny Perch, a rare Golden Koi, and an Old
+  Boot). The Journal has a new **Fish** tab. Catch 6 kinds to earn the Ace Angler sticker
+  and a Fish Bowl.
+- **Weekly Challenge:** each ISO week one arcade game has a target score (banner in the
+  picker plus a WEEKLY ribbon on the cabinet). Beat it for 40 coins and the Weekly Champ
+  sticker (and an Arcade Trophy the first time).
+- **2-player hot-seat** in the arcade: press X in the picker. Player 1 plays, then a
+  "pass the console" card, then Player 2 plays, then both scores are compared. Rewards
+  are paid once, for the better score.
+- **Home decorating:** Furnish tile at Home. An 8x3 grid (wall row + 2 floor rows),
+  D-pad cursor, L/R picks an item, A places or picks up, B finishes. There are 16
+  code-drawn pieces from shops (Sweetie's and Gen's now sell some), quest rewards,
+  events, fishing and the weekly challenge. Each placed piece makes Home a bit cozier
+  (joy drops slower there). The layout is saved.
+- **More pets after the ending:** Pause > Pets... adopts up to 3 more friends and switches
+  who you're playing with. Coins, items, garden and furniture are shared. Napping pets
+  sleep at Home and don't get hungry.
+
+### Changed
+- Save schema **v4**: adds a `settings` block and an `extras` block (events, fish book,
+  weekly, furniture, layout, companions), plus `pet.trait/stage_seen/mopey`. v0-v3 saves
+  load. Pre-v4 saves get the furniture for quests they already finished. Bad extras data
+  falls back to defaults and never costs the pet.
+- Backdrop tints now compose time of day x season x mopey and are still cached
+  (LRU of 3).
+- New-pet flow: species -> personality. The pause menu has Resume, Journal, Settings,
+  Take a photo, Save now, (Pets...), New pet..., Quit game.
+
+### Tests
+- 127 tests (was 75): audio no-op paths, settings round-trip and the parent gate, the
+  reminder, photos, Quit, launcher syntax, Python 3.7 parse of every file, growth,
+  traits, mopey, seasons/events, fishing (core, minigame, by buttons), weekly,
+  furniture, companions, hot-seat, and v0/v1/v2/v3 -> v4 migration. Tests pin
+  `OURWORLD_DATE=2026-06-10` in conftest so holidays don't change results.
+
 ## [Unreleased] - 2026-10-17 (round 3) - a story and a reason to play
 
 ### Added

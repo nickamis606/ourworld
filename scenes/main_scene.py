@@ -21,6 +21,8 @@ from sprites.pet_sprite import PetSprite
 from sprites import npc_sprite
 from ui.dialogue_box import DialogueBox
 from ui.journal import Journal
+from ui.settings_menu import SettingsMenu
+from engine.audio import track_for
 from ui.action_bar import ActionBar, ActionItem
 from ui.common import hint_bar, panel
 from ui.icons import icon
@@ -81,7 +83,10 @@ class MainScene(BaseScene):
         self._bubble_t = 0.0
         self.dialog = None
         self.journal = Journal()
+        self.settings_menu = None
+        self.hide_hud = False
         self._npc_flip = {}
+        self._music_t = 0.0
 
     # ---------------------------------------------------------- lifecycle
     def on_enter(self, **kwargs):
@@ -104,6 +109,7 @@ class MainScene(BaseScene):
             info = self.state.get_current_location_info()
             self.say(f"Welcome to {info['name']}!")
         self.refresh_items()
+        self._update_music()
         self._maybe_story_dialogue()
 
     def on_exit(self):
@@ -116,13 +122,21 @@ class MainScene(BaseScene):
 
     @property
     def overlay_open(self):
-        return bool(self.map.open or self.journal.open or self.dialog or self.pause)
+        return bool(self.map.open or self.journal.open or self.dialog or self.pause or self.settings_menu)
+
+    def sfx(self, name):
+        self.game.sfx(name)
+
+    def _update_music(self):
+        s = self.state
+        self.game.audio.music(track_for(s.pet.location, s.time_of_day(), s.season(), s.story.finished))
 
     # -------------------------------------------------------------- story
     def open_dialog(self, lines):
         if not lines:
             return False
         self.dialog = DialogueBox(lines, self.state.pet.name, self._pet_portrait(), self._after_dialogue)
+        self.sfx("talk")
         return True
 
     def _pet_portrait(self):
@@ -237,8 +251,20 @@ class MainScene(BaseScene):
     # -------------------------------------------------------------- input
     def handle_action(self, a):
         if self.dialog:
-            return self.dialog.handle_action(a)
+            before = self.dialog.index
+            self.dialog.handle_action(a)
+            if self.dialog and self.dialog.index != before and not self.dialog.done:
+                self.sfx("talk")
+            return
+        if self.settings_menu:
+            self.settings_menu.handle_action(a)
+            self.sfx("move" if a in ("UP", "DOWN", "LEFT", "RIGHT") else "select")
+            if not self.settings_menu.open:
+                self.settings_menu = None
+                self.state.save()
+            return
         if self.journal.open:
+            self.sfx("move" if a in ("UP", "DOWN", "LEFT", "RIGHT", "L", "R") else "back")
             return self.journal.handle_action(a, self.state.story)
         if self.pause:
             return self._pause_action(a)
@@ -246,8 +272,10 @@ class MainScene(BaseScene):
             return self._map_action(a)
         if a == "LEFT":
             self.bar.move(-1)
+            self.sfx("move")
         elif a == "RIGHT":
             self.bar.move(1)
+            self.sfx("move")
         elif a == "A":
             self.activate(self.bar.current.id if self.bar.current else None)
         elif a in ("SELECT", "UP"):
@@ -297,6 +325,7 @@ class MainScene(BaseScene):
         moves = {"LEFT": (-1, 0), "RIGHT": (1, 0), "UP": (0, -1), "DOWN": (0, 1)}
         if a in moves:
             self.map.move(*moves[a])
+            self.sfx("move")
         elif a in ("B", "SELECT", "START"):
             self.map.hide()
         elif a == "A":
@@ -310,8 +339,12 @@ class MainScene(BaseScene):
                 self.say("You're already here!")
 
     def open_pause(self):
-        self.pause = Menu("Paused", [("resume", "Resume"), ("journal", "Journal"), ("save", "Save now"),
-                                     ("newpet", "New pet..."), ("quit", "Save & Quit")])
+        opts = [("resume", "Resume"), ("journal", "Journal"), ("settings", "Settings"),
+                ("photo", "Take a photo"), ("save", "Save now")]
+        opts.append(("pets", "Pets...") if self.state.story.finished else ("newpet", "New pet..."))
+        opts.append(("quit", "Quit game"))
+        self.pause = Menu("Paused", opts)
+        self.sfx("select")
 
     def _pause_action(self, a):
         if a == "UP":
@@ -325,6 +358,13 @@ class MainScene(BaseScene):
             self.pause = None
             if sel == "journal":
                 self.journal.show()
+            elif sel == "settings":
+                self.settings_menu = SettingsMenu(self.state.settings, self.game.apply_settings)
+            elif sel == "photo":
+                path = self.game.take_photo()
+                self.say("Photo saved to photos/!" if path else "Couldn't save the photo", bad=not path)
+            elif sel == "pets":
+                self.game.switch("title", mode="pets")
             elif sel == "save":
                 self.say("Saved!" if self.state.save() else "Save failed!", bad=False)
             elif sel == "newpet":
@@ -388,8 +428,11 @@ class MainScene(BaseScene):
         if not res.get("success"):
             self.say(res.get("msg", "Can't do that"), bad=True)
             self._start_anim("sad", 0.6)
+            self.sfx("sad")
             return
         self.say(res.get("msg", ""))
+        self.sfx({"feed": "eat", "play": "play", "clean": "splash", "rest": "rest", "plant": "place",
+                  "harvest": "coin", "buy": "coin", "decorate": "sparkle"}.get(kind, "select"))
         self._start_anim(kind, None)
         self.fx.deltas(res.get("deltas", {}), hx, hy)
         burst = {"feed": ((255, 120, 160), "heart"), "play": ((255, 200, 80), "sparkle"),
@@ -417,13 +460,27 @@ class MainScene(BaseScene):
         self.bar.update(dt)
         self.map.update(dt)
         self.journal.update(dt)
+        if self.settings_menu:
+            self.settings_menu.update(dt, self.game.input.held)
         if self.dialog:
             self.dialog.update(dt)
+        elif self.state.reminder_due() and not self.overlay_open:
+            self.state.ack_reminder()
+            mins = int(self.state.session_secs // 60)
+            self.open_dialog([("", f"You've been playing for {mins} minutes. Great job caring for {self.state.pet.name}!"),
+                              ("pet", f"{self.state.pet.name} stretches. Maybe time for a little break?")])
         elif self.toast_t <= 0 and not self.anim_kind:
             note = self.state.story.pop_notice()
             if note:
                 self.say(note)
+                self.sfx("levelup" if note.startswith("Bond level") else
+                         "quest" if "Quest complete" in note or "New quest" in note else
+                         "sparkle" if ("sticker" in note or "Spark" in note) else "coin")
                 self.refresh_items()
+        self._music_t += dt
+        if self._music_t > 2.0:
+            self._music_t = 0.0
+            self._update_music()
         self.pet.update(dt)
         self.animator.update(dt)
         self.fx.update(dt)
@@ -454,6 +511,8 @@ class MainScene(BaseScene):
         self.pet.draw(surf, pose)
         if self.animator.is_active:
             self.animator.draw(surf, int(self.pet.feet.x), int(self.pet.feet.y - self.pet.height * 0.55))
+        if self.hide_hud:
+            return
         if not self.anim_kind:
             self._draw_want_bubble(surf)
         self.fx.draw(surf)
@@ -490,6 +549,8 @@ class MainScene(BaseScene):
                 if mk and markers.get(info["location"]) != "ready":
                     markers[info["location"]] = mk
             self.map.draw(surf, loc, labels, locked, markers)
+        elif self.settings_menu:
+            self.settings_menu.draw(surf)
         elif self.journal.open:
             self.journal.draw(surf, s)
         elif self.pause:

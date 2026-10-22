@@ -8,7 +8,11 @@ through Game.switch(), which fades out, calls on_exit/on_enter, fades in.
 Run:  python main_pygame.py            (windowed 640x480)
       python main_pygame.py --fullscreen
 Env:  OURWORLD_SAVE=/path/save.json    (default: saves/savegame.json)
+      OURWORLD_PHOTOS=/path/dir         (default: photos/ next to this file)
+      OURWORLD_NOSOUND=1                (skip the mixer entirely)
+      OURWORLD_HOUR / OURWORLD_DATE     (pretend time, for testing)
 """
+import time
 import os
 import sys
 
@@ -30,10 +34,8 @@ FADE = 0.22
 class Game:
     def __init__(self, screen=None, save_path=None, fullscreen=False):
         pygame.init()
-        try:
-            pygame.mixer.quit()  # no audio yet; don't hold the device open
-        except pygame.error:
-            pass
+        from engine.audio import Audio
+        self.audio = Audio()    # silently disabled if the mixer can't open
         if screen is None:
             flags = pygame.FULLSCREEN | pygame.SCALED if fullscreen else 0
             screen = pygame.display.set_mode((WIDTH, HEIGHT), flags)
@@ -52,7 +54,48 @@ class Game:
         self._veil = pygame.Surface((WIDTH, HEIGHT)).convert()
         self._veil.fill((16, 12, 24))
         self._saved_flash = None
+        self._photo_flash = 0.0
+        self._combo_latched = False
+        self.last_photo = None
+        self.apply_settings()
         self.switch("title", fade=False)
+
+    def apply_settings(self, settings=None):
+        st = settings or self.state.settings
+        self.audio.apply(st.music / 10.0, st.sfx / 10.0, st.muted)
+
+    def sfx(self, name):
+        self.audio.sfx(name)
+
+    # ------------------------------------------------------------- photos
+    def photo_dir(self):
+        return os.environ.get("OURWORLD_PHOTOS") or os.path.join(ROOT, "photos")
+
+    def take_photo(self):
+        """Save the current scene without HUD to photos/. Returns the path or None."""
+        d = self.photo_dir()
+        try:
+            os.makedirs(d, exist_ok=True)
+            sc = self.scene
+            had = getattr(sc, "hide_hud", None)
+            if had is not None:
+                sc.hide_hud = True
+                sc.draw(self.screen)
+                sc.hide_hud = had
+            stamp = time.strftime("%Y%m%d_%H%M%S")
+            path = os.path.join(d, f"ourworld_{stamp}.png")
+            n = 1
+            while os.path.exists(path):
+                n += 1
+                path = os.path.join(d, f"ourworld_{stamp}_{n}.png")
+            pygame.image.save(self.screen, path)
+        except (OSError, pygame.error) as e:
+            print(f"[photo] failed: {e}")
+            return None
+        self.last_photo = path
+        self._photo_flash = 0.25
+        self.sfx("photo")
+        return path
 
     # ------------------------------------------------------------ scenes
     def _get(self, name):
@@ -113,6 +156,15 @@ class Game:
         for a in self.input.update(dt):
             if not self.transitioning:
                 self.scene.handle_action(a)
+        # photo combo: hold L + R
+        held = self.input.held
+        if "L" in held and "R" in held:
+            if not self._combo_latched and not self.transitioning:
+                self._combo_latched = True
+                if self.take_photo() and hasattr(self.scene, "say"):
+                    self.scene.say("Photo saved to photos/!")
+        else:
+            self._combo_latched = False
 
         if self._fade_dir:
             self._fade += self._fade_dir * dt / FADE
@@ -141,6 +193,14 @@ class Game:
             bg.topright = (634, 82)
             pygame.draw.rect(self.screen, (60, 120, 80), bg, border_radius=8)
             self.screen.blit(t, (bg.x + 6, bg.y + 2))
+        if self._photo_flash > 0:
+            self._photo_flash -= 1 / 30
+            flash = getattr(self, "_flash_surf", None)
+            if flash is None:
+                flash = self._flash_surf = pygame.Surface((WIDTH, HEIGHT)).convert()
+                flash.fill((255, 255, 255))
+            flash.set_alpha(int(200 * max(0.0, self._photo_flash) / 0.25))
+            self.screen.blit(flash, (0, 0))
         if self._fade > 0:
             self._veil.set_alpha(int(255 * min(1.0, self._fade)))
             self.screen.blit(self._veil, (0, 0))
@@ -159,6 +219,7 @@ class Game:
         finally:
             if self.state.has_save:
                 self.state.save()
+            self.audio.shutdown()
             pygame.quit()
 
 

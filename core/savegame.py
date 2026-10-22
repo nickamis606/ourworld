@@ -1,5 +1,7 @@
 """SaveManager: atomic JSON save/load with migration. No pygame imports.
 
+Save format v4 (v3 + "settings", personality/growth/companions/home layout;
+see CHANGELOG). Older formats:
 Save format v3:
     {"schema_version": 3, "saved_at": <unix time>, "high_scores": {...}, "pet": {...},
      "story": {...}}
@@ -13,7 +15,7 @@ import tempfile
 import time
 from typing import Dict, Optional
 
-SAVE_SCHEMA_VERSION = 3
+SAVE_SCHEMA_VERSION = 4
 AUTO_SAVE_COOLDOWN = 3.0
 
 
@@ -56,6 +58,8 @@ class SaveManager:
             hs = data.get("high_scores") or {}
             self.high_scores = {str(k): int(v) for k, v in hs.items()
                                 if isinstance(v, (int, float))}
+            from .settings import Settings
+            self.game_state.settings = Settings.from_dict(data.get("settings"))
             from .story import StoryState
             if isinstance(data.get("story"), dict):
                 try:
@@ -65,6 +69,9 @@ class SaveManager:
                     self.game_state.story = StoryState.for_existing_save(self.game_state.pet.location)
             else:
                 self.game_state.story = StoryState.for_existing_save(self.game_state.pet.location)
+            hook = getattr(self.game_state, "extra_load", None)
+            if hook:
+                hook(data, version)
         except Exception as e:  # noqa: BLE001 - any bad field means bad save
             self._quarantine(f"invalid: {e}")
             return False
@@ -97,7 +104,11 @@ class SaveManager:
             "high_scores": {k: int(v) for k, v in self.high_scores.items()},
             "pet": self.game_state.pet.to_dict(),
             "story": self.game_state.story.to_dict(),
+            "settings": self.game_state.settings.to_dict(),
         }
+        extra = getattr(self.game_state, "extra_save", None)
+        if extra:
+            payload.update(extra())
         directory = os.path.dirname(self.path) or "."
         tmp_path = None
         try:

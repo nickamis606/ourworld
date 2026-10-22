@@ -15,8 +15,10 @@ from . import world
 import random
 import time
 
+from .settings import Settings
 from .story import StoryState, today_str, bond_level
 from . import story_data
+from . import calendar
 from .world import (LOCATIONS, PLANTS, SEED_TO_PLANT, MAX_STAGE, GARDEN_SLOTS,
                     DECORATION_SECS, FLOWERS_TO_DECORATE, PLACE_ACTIONS)
 
@@ -54,6 +56,9 @@ class GameState:
         self.clock = clock or time.time     # injectable for tests (daily wishes, day/night)
         self.pet = PetState()
         self.story = StoryState.new_game()
+        self.settings = Settings()
+        self.session_secs = 0.0          # play time since launch (parent reminder)
+        self._next_reminder = None
         self.save_manager = SaveManager(self, save_path or DEFAULT_SAVE_PATH)
         self._has_save = self.load() if autoload else False
         self._autosave_timer = 0.0
@@ -63,6 +68,12 @@ class GameState:
     # ------------------------------------------------------------------ time
     def today(self) -> str:
         return today_str(self.clock())
+
+    def today_date(self):
+        return calendar.date_from(self.clock())
+
+    def season(self) -> str:
+        return calendar.season_of(self.today_date())
 
     def time_of_day(self) -> str:
         """'day' | 'evening' | 'night' from the local clock (OURWORLD_HOUR overrides)."""
@@ -76,6 +87,20 @@ class GameState:
     @property
     def has_save(self) -> bool:
         return self._has_save
+
+    # ------------------------------------------------------ parent tools
+    def reminder_due(self) -> bool:
+        m = self.settings.reminder_min
+        if not m:
+            self._next_reminder = None
+            return False
+        if self._next_reminder is None:
+            self._next_reminder = m * 60.0
+        return self.session_secs >= self._next_reminder
+
+    def ack_reminder(self) -> None:
+        m = self.settings.reminder_min or 30
+        self._next_reminder = self.session_secs + m * 60.0
 
     def decay_multipliers(self) -> dict:
         mult = {}
@@ -91,7 +116,14 @@ class GameState:
             mult["energy"] = 0.7      # calm place: tires you out more slowly
         if loc == "pond":
             mult["cleanliness"] = 1.4  # sand gets everywhere
+        self._extra_multipliers(mult)
+        if self.settings.slow_needs:
+            for n in NEED_NAMES:
+                mult[n] = mult.get(n, 1.0) * 0.5
         return mult
+
+    def _extra_multipliers(self, mult: dict) -> None:
+        """Hook for personality / seasons (filled in by later features)."""
 
     def tick(self, dt: float) -> None:
         """Advance the simulation by dt seconds (call every frame)."""
@@ -99,6 +131,7 @@ class GameState:
             return
         dt = min(dt, 5.0)  # a stall must not nuke the pet
         self.pet.play_seconds += dt
+        self.session_secs += dt
         self.pet.needs.tick(dt, self.decay_multipliers())
         self._grow_garden(dt)
         if self.pet.decoration_left > 0:

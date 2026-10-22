@@ -20,6 +20,8 @@ class EndingScene(BaseScene):
     low_power_ok = False
 
     def on_enter(self, **kw):
+        self.game.audio.music("festival")
+        self.game.sfx("sparkle")
         self.t = 0.0
         self.rng = random.Random(7)
         self.parts = []      # [x, y, vx, vy, life, color]

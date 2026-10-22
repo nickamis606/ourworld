@@ -18,3 +18,4 @@ saves/
 *.tmp
 .pytest_cache/
 input_map.json
+photos/

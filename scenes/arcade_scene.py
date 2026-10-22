@@ -33,6 +33,7 @@ class ArcadeScene(BaseScene):
         self.t = 0.0
 
     def on_enter(self, game=None, **kw):
+        self.game.audio.music("arcade")
         self.phase = "pick"
         self.minigame = None
         self.result = None

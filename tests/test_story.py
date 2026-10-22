@@ -201,7 +201,7 @@ def test_story_survives_save_and_load(gs, tmp_path):
     xp = gs.pet.bond_xp
     assert gs.save()
     data = json.loads(open(gs.save_manager.path).read())
-    assert data["schema_version"] == 3 and "story" in data
+    assert data["schema_version"] == 4 and "story" in data
     b = GameState(save_path=gs.save_manager.path)
     st = b.story
     assert st.chapter == 2 and st.status("sweet_tooth") == "active"

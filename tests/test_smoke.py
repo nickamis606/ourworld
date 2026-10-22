@@ -198,8 +198,8 @@ def test_pause_and_quit_saves(game):
     adopt(game)
     run(game, 2, key(pygame.K_RETURN))
     assert game.scene.pause is not None
-    for _ in range(4):   # Resume, Journal, Save, New pet, Save & Quit
-        run(game, 1, key(pygame.K_DOWN))
+    run(game, 1, key(pygame.K_UP))   # wraps to the last entry: "Quit game"
+    assert game.scene.pause.selected == "quit"
     run(game, 1, key(pygame.K_SPACE))
     assert not game.running
 

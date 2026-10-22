@@ -32,7 +32,8 @@ class TitleScene(BaseScene):
         self.mode = mode or ("menu" if has else "select")
         self.index = self.state.pet.species_id if has else 0
         self.menu = Menu("", [("continue", f"Continue with {self.state.pet.name}"),
-                              ("new", "New pet")], width=360)
+                              ("new", "New pet"), ("quit", "Quit")], width=360)
+        self.game.audio.music("home")
 
     def is_animating(self):
         return True
@@ -42,14 +43,19 @@ class TitleScene(BaseScene):
         if self.mode == "menu":
             if a in ("UP", "DOWN"):
                 self.menu.move(1 if a == "DOWN" else -1)
+                self.game.sfx("move")
             elif a in ("A", "START"):
-                if self.menu.selected == "continue":
+                self.game.sfx("select")
+                if self.menu.selected == "quit":
+                    self.game.quit()
+                elif self.menu.selected == "continue":
                     self.game.switch("main", message=f"Welcome back! {self.state.pet.name} missed you.")
                 else:
                     self.mode = "select"
             return
         moves = {"LEFT": -1, "RIGHT": 1, "UP": -COLS, "DOWN": COLS}
         if a in moves:
+            self.game.sfx("move")
             self.index = (self.index + moves[a]) % len(PET_ROSTER)
             self.confirm_new = False
         elif a in ("A", "START"):
@@ -62,7 +68,7 @@ class TitleScene(BaseScene):
         if e.type != pygame.MOUSEBUTTONDOWN or e.button != 1:
             return
         if self.mode == "menu":
-            i = self.menu.hit(e.pos, (320, 360))
+            i = self.menu.hit(e.pos, (320, 370))
             if i is not None:
                 self.menu.index = i
                 self.handle_action("A")
@@ -105,9 +111,9 @@ class TitleScene(BaseScene):
         surf.blit(title, title.get_rect(center=(320, 52 + 4 * math.sin(self.t * 2))))
         if self.mode == "menu":
             sp = self.sprites[self.state.pet.species_id]
-            sp.set_feet(320, 270)
+            sp.set_feet(320, 250)
             sp.draw(surf, {"dy": -10 * abs(math.sin(self.t * 3))})
-            self.menu.draw(surf, (320, 360), veil=False, box=False)
+            self.menu.draw(surf, (320, 370), veil=False, box=False)
             hint_bar(surf, [("D-pad", "Choose"), ("A", "OK")])
             return
         sub = assets.text("Choose your companion", 28, (110, 70, 50), bold=True)

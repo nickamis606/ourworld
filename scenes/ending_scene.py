@@ -26,7 +26,7 @@ class EndingScene(BaseScene):
         self.next_burst = 0.3
         st, pet = self.state.story, self.state.pet
         self.lines = [
-            ("The Festival of Lights", 34, (255, 230, 150)),
+            ("Festival of Lights!", 32, (255, 230, 150)),
             (f"{pet.name} and you woke up {SD.TOWN}!", 22, (255, 255, 255)),
             ("", 10, (0, 0, 0)),
             ("Starring", 18, (220, 210, 240)),
@@ -76,14 +76,14 @@ class EndingScene(BaseScene):
         for x, y, _, _, life, col in self.parts:
             pygame.draw.circle(surf, col, (int(x), int(y)), 3 if life > 0.4 else 2)
         # credits roll inside a dark panel
-        surf.blit(panel((420, 300), (20, 16, 40, 170), 18, None), (110, 110))
+        surf.blit(panel((380, 300), (20, 16, 40, 170), 18, None), (20, 110))
         y = 360 - self.t * 34
         clip = surf.get_clip()
-        surf.set_clip(pygame.Rect(110, 118, 420, 284))
+        surf.set_clip(pygame.Rect(20, 118, 380, 284))
         for text, size, col in self.lines:
             if text and -40 < y < 420:
                 t = assets.text_outlined(text, size, col, (30, 20, 50)) if size >= 26 else assets.text(text, size, col, bold=True)
-                surf.blit(t, t.get_rect(center=(320, int(y))))
+                surf.blit(t, t.get_rect(center=(210, int(y))))
             y += size + 12
         surf.set_clip(clip)
         if y < 140:   # roll finished: loop it

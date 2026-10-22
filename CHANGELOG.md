@@ -1,5 +1,50 @@
 # Changelog
 
+## [Unreleased] - 2026-10-17 (round 3) - a story and a reason to play
+
+### Added
+- **Story: "The Lights of Willowby."** Five chapters, 9 main quests + 2 side quests,
+  an ending scene and a post-game. All rules in `core/story.py`, all content in
+  `core/story_data.py` (pure Python, no pygame).
+- **8 townsfolk** with code-drawn sprites and short dialogue: Mayor Maple (tortoise),
+  Sweetie (bunny), Gen (hedgehog), Pixel Pete (raccoon), Captain Quack (duck),
+  Olive (owl), Coco (cat), Fern (fox). They stand in their places with "!" (new quest)
+  or "*" (come back) markers; Talk tile or Y to chat.
+- **Quests** with steps driven by real play: care actions (optionally at a certain
+  place), shop buys, planting, harvesting, decorating, travel, arcade games with a
+  minimum score, place actions, plus bond/sticker conditions. Quests are offered by
+  talking, tracked on a one-line HUD objective, and turned in to the giver for coins,
+  items, stickers and **Sparks**.
+- **Progression:** a new pet starts with Home, Backyard, Park and Town Square; each
+  chapter opens more of the map (shops -> Arcade + Pond -> Library + Spa + Woods ->
+  Lantern Hill). Locked map cards are dimmed with a padlock.
+- **Bond levels** (1-8, "New Friends" to "Forever Friends"): XP from caring, place
+  actions, games and quests. The final quest needs Bond level 4.
+- **Stickers:** 19 code-drawn stickers. Quest rewards, plus 7 hidden in Willow Woods (Explore).
+- **Journal** (X / Shift / I, or Pause -> Journal): Story tab (chapter, Sparks,
+  quest list with steps), Sticker book, Friends (townsfolk, met/helped, places).
+- **Daily Wishes** (from chapter 3, and the main post-game loop): 3 small tasks per
+  calendar day, picked from a pool by date. 15 coins each, bonus + sticker for all 3.
+- **New places:** Town Square (the Mayor; looks gray at first, wakes up as Sparks
+  come in, festival bunting + lit windows after the ending), Willow Woods (Explore:
+  find stickers/coins, 20 s cooldown), Lantern Hill (Light the Wish Lantern). Map is
+  now 3x4.
+- **Day/night:** evening and night tints baked into cached backdrop copies (LRU of 3),
+  stars outdoors. Zero per-frame cost. `OURWORLD_HOUR` overrides the clock.
+- Ending scene: lantern lit, fireworks, thank-you roll with your pet's name and stats.
+- 19 new tests (75 total): story data consistency, quest gating by place/acceptance,
+  gifts, unlocks, a full core playthrough to the ending, side quest, explore finds,
+  daily-wish rotation/rewards, save v3 round trip, v2 -> v3 migration, garbage
+  story data, and headless smoke runs: chapter 1 played entirely by buttons, a
+  scripted run through the ending scene, journal tabs, every place at night.
+
+### Changed
+- Save schema v3 adds a `story` block and `pet.bond_xp`. v0/v1/v2 saves still load:
+  a save without a story keeps every place it already had open ("free roam"), starts
+  the story at chapter 1 and plays the intro once. Bad story data never costs the pet.
+- `GameState` emits story events from every action; `change_location` refuses locked places.
+- Pause menu gains Journal; keyboard adds I (X) and Y (Y).
+
 ## [Unreleased] - 2026-10-17 (round 2) - more places, more arcade
 
 ### Added

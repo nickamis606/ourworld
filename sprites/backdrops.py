@@ -522,9 +522,13 @@ def _lantern_hill(surf, lit="v0"):
     pygame.draw.rect(surf, (120, 70, 40), (body.x + 8, body.y - 6, body.w - 16, 8), border_radius=3)
     pygame.draw.rect(surf, (120, 70, 40), (body.x + 8, body.bottom - 2, body.w - 16, 8), border_radius=3)
     # six spark pedestals around the post
+    gems = [(250, 140, 190), (120, 210, 110), (250, 200, 70), (90, 180, 240), (170, 120, 220), (250, 170, 120)]
     for i in range(6):
         x = 380 + i * 36
         pygame.draw.rect(surf, (160, 150, 150), (x, 340, 20, 20), border_radius=4)
+        if on:
+            pygame.draw.circle(surf, gems[i], (x + 10, 332), 8)
+            pygame.draw.circle(surf, (255, 255, 255), (x + 7, 329), 2)
     _sign(surf, "LANTERN HILL", 150, 200, (200, 140, 40))
 
 

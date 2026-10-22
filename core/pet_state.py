@@ -1,85 +1,84 @@
-# core/pet_state.py
-from dataclasses import dataclass, field, asdict
-import time
+"""PetState: everything that gets saved about the pet. No pygame imports."""
+from dataclasses import dataclass, field
 from typing import Dict, List
 
-@dataclass
-class Needs:
-    hunger: float = 80.0
-    happiness: float = 80.0
-    energy: float = 80.0
-    cleanliness: float = 80.0
+from .needs import Needs
+from .world import LOCATIONS, PLANTS, MAX_STAGE
 
-    def tick(self, delta_seconds: float = 2.0):
-        self.hunger = max(0.0, self.hunger - 0.8 * delta_seconds / 2)
-        self.happiness = max(0.0, self.happiness - 0.3 * delta_seconds / 2)
-        self.energy = max(0.0, self.energy - 0.5 * delta_seconds / 2)
-        self.cleanliness = max(0.0, self.cleanliness - 0.2 * delta_seconds / 2)
-
-    def apply_action(self, action: str) -> bool:
-        if action == "feed":
-            self.hunger = min(100.0, self.hunger + 25)
-            self.happiness = min(100.0, self.happiness + 5)
-            self.cleanliness = max(0.0, self.cleanliness - 8)
-            return True
-        elif action == "play":
-            self.happiness = min(100.0, self.happiness + 30)
-            self.energy = max(0.0, self.energy - 15)
-            self.hunger = max(0.0, self.hunger - 5)
-            return True
-        elif action == "clean":
-            self.cleanliness = min(100.0, self.cleanliness + 35)
-            self.happiness = min(100.0, self.happiness + 10)
-            return True
-        elif action == "rest":
-            self.energy = min(100.0, self.energy + 35)
-            self.happiness = min(100.0, self.happiness + 8)
-            return True
-        return False
-
-    def to_dict(self):
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, d):
-        return cls(**d)
+NEW_GAME_COINS = 60
 
 
 @dataclass
 class PetState:
     name: str = "Pixel"
-    creature_type: str = "fluff"
+    species_id: int = 0                 # index into the pet roster (sprite/look)
     needs: Needs = field(default_factory=Needs)
     location: str = "home"
-    days_alive: int = 0
-    last_tick: float = field(default_factory=time.monotonic)
-    coins: int = 1000
+    coins: int = NEW_GAME_COINS
     inventory: Dict[str, int] = field(default_factory=dict)
-    garden: List[dict] = field(default_factory=list)
-    home_decorated: bool = False   
-    home_decoration_time: float = 0.0    
+    garden: List[dict] = field(default_factory=list)   # {"type", "stage", "age"}
+    decoration_left: float = 0.0        # seconds of home decoration remaining
+    play_seconds: float = 0.0           # total active time
+    care_count: int = 0
 
-    def tick(self):
-        now = time.monotonic()
-        delta = now - self.last_tick
-        self.last_tick = now
-        self.needs.tick(delta)
+    # -- derived --------------------------------------------------------
+    @property
+    def home_decorated(self) -> bool:
+        return self.decoration_left > 0
 
-    def apply_action(self, action: str) -> bool:
-        return self.needs.apply_action(action)
-
-    def to_dict(self):
-        d = asdict(self)
-        d["needs"] = self.needs.to_dict()
-        d.pop("last_tick", None)
-        return d
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "species_id": self.species_id,
+            "needs": self.needs.to_dict(),
+            "location": self.location,
+            "coins": int(self.coins),
+            "inventory": {k: int(v) for k, v in self.inventory.items() if v > 0},
+            "garden": [dict(p) for p in self.garden],
+            "decoration_left": round(self.decoration_left, 2),
+            "play_seconds": round(self.play_seconds, 2),
+            "care_count": self.care_count,
+        }
 
     @classmethod
-    def from_dict(cls, d):
-        needs = Needs.from_dict(d.pop("needs", {}))
-        d.setdefault("coins", 1000)
-        d.setdefault("inventory", {})
-        d.setdefault("garden", [])
-        d.setdefault("home_decorated", False)
-        d.setdefault("home_decoration_time", 0.0)
-        return cls(needs=needs, **d)
+    def from_dict(cls, d: dict) -> "PetState":
+        """Tolerant loader: accepts v0/v1 saves and ignores unknown keys."""
+        d = dict(d or {})
+        pet = cls()
+        pet.name = str(d.get("name", pet.name))[:16] or "Pixel"
+        try:
+            pet.species_id = int(d.get("species_id", d.get("pet_id", 0)))
+        except (TypeError, ValueError):
+            pet.species_id = 0
+        pet.needs = Needs.from_dict(d.get("needs"))
+        loc = d.get("location", "home")
+        pet.location = loc if loc in LOCATIONS else "home"
+        try:
+            pet.coins = max(0, int(d.get("coins", NEW_GAME_COINS)))
+        except (TypeError, ValueError):
+            pet.coins = NEW_GAME_COINS
+        inv = d.get("inventory") or {}
+        pet.inventory = {str(k): int(v) for k, v in inv.items()
+                         if isinstance(v, (int, float)) and v > 0}
+        pet.garden = []
+        for p in (d.get("garden") or [])[:8]:
+            if not isinstance(p, dict):
+                continue
+            ptype = p.get("type", "flower")
+            if ptype not in PLANTS:
+                ptype = "flower"
+            stage = max(0, min(MAX_STAGE, int(p.get("stage", 0))))
+            # v0/v1 stored a time.monotonic() "planted_time", which is
+            # meaningless after a reboot and froze plants forever. Convert to
+            # an "age within current stage" counter that survives restarts.
+            age = float(p.get("age", 0.0)) if "age" in p else 0.0
+            pet.garden.append({"type": ptype, "stage": stage, "age": age})
+        # v1 had home_decorated + monotonic home_decoration_time; give a fresh window.
+        if "decoration_left" in d:
+            pet.decoration_left = max(0.0, float(d.get("decoration_left") or 0.0))
+        elif d.get("home_decorated"):
+            from .world import DECORATION_SECS
+            pet.decoration_left = float(DECORATION_SECS)
+        pet.play_seconds = max(0.0, float(d.get("play_seconds", 0.0) or 0.0))
+        pet.care_count = max(0, int(d.get("care_count", 0) or 0))
+        return pet

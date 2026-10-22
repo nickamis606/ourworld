@@ -1,225 +1,281 @@
-import json
+"""GameState: all game rules. Pure Python, no pygame imports.
+
+The pygame layer calls ``tick(dt)`` once per frame and the action methods on
+input. Every action returns a plain dict with at least ``success`` and ``msg``
+so the UI can show feedback without knowing the rules.
+"""
 import os
-import time
+
+from .needs import NEED_NAMES
 from .pet_state import PetState
 from .savegame import SaveManager
+from .rewards import minigame_reward
+from . import world
+from .world import (LOCATIONS, PLANTS, SEED_TO_PLANT, MAX_STAGE, GARDEN_SLOTS,
+                    DECORATION_SECS, FLOWERS_TO_DECORATE)
+
+DEFAULT_SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "saves", "savegame.json")
+
+# action -> (need that must have room, refusal text, base deltas)
+CARE_ACTIONS = {
+    "feed":  ("hunger", "{name} isn't hungry right now.",
+              {"hunger": 25, "happiness": 4, "cleanliness": -5}),
+    "play":  ("happiness", "{name} is already overjoyed!",
+              {"happiness": 22, "energy": -12, "hunger": -6}),
+    "clean": ("cleanliness", "{name} is already squeaky clean.",
+              {"cleanliness": 35, "happiness": 4}),
+    "rest":  ("energy", "{name} isn't sleepy.",
+              {"energy": 35, "hunger": -4}),
+}
+# location -> (action, bonus deltas, label)
+LOCATION_BONUS = {
+    "park": ("play", {"happiness": 10}, "Park bonus!"),
+    "home": ("rest", {"energy": 10}, "Cozy home bonus!"),
+    "backyard": ("clean", {"happiness": 6}, "Fresh-air bonus!"),
+}
+FULL_THRESHOLD = 96.0
+AUTOSAVE_EVERY = 60.0  # seconds of play between background autosaves
 
 
 class GameState:
-    SAVE_PATH = os.path.join(os.path.dirname(__file__), "..", "saves", "savegame.json")
+    LOCATIONS = LOCATIONS  # backwards compat for old UI code
 
-    LOCATIONS = {
-        "home": {"name": "Home", "desc": "Cozy and familiar", "color": (139, 69, 19), "icon": "home", "type": "residential"},
-        "park": {"name": "Park", "desc": "Fresh air and open space", "color": (46, 139, 87), "icon": "park", "type": "recreation"},
-        "arcade": {"name": "Arcade", "desc": "Lights and games", "color": (65, 105, 225), "icon": "arcade", "type": "entertainment"},
-        "backyard": {"name": "Backyard", "desc": "Garden spot and fresh air", "color": (85, 140, 80), "icon": "backyard", "type": "residential"},
-        "sweeties_candy_shop": {
-            "name": "Sweetie's Candy Shop",
-            "desc": "Buy and eat delicious treats",
-            "color": (220, 60, 80),
-            "icon": "candy_shop",
-            "type": "shop",
-            "items": [
-                {"key": "lollipop", "name": "Lollipop", "price": 10, "effect": {"hunger": 40}, "desc": "+40 Hunger"},
-                {"key": "candy_apple", "name": "Candy Apple", "price": 25, "effect": {"hunger": 75}, "desc": "+75 Hunger"},
-            ]
-        },
-        "gens_garden": {
-            "name": "Gen's Garden",
-            "desc": "Plants and seeds for your backyard",
-            "color": (70, 130, 180),
-            "icon": "gens_garden",
-            "type": "shop",
-            "items": [
-                {"key": "flower_seeds", "name": "Flower Seeds", "price": 12, "effect": {"happiness": 45}, "desc": "+45 Happiness"},
-                {"key": "sunflower_seeds", "name": "Sunflower Seeds", "price": 20, "effect": {"happiness": 60, "energy": 15}, "desc": "+60 Happiness"},
-            ]
-        },
-    }
-
-    def __init__(self):
+    def __init__(self, save_path: str | None = None, autoload: bool = True):
         self.pet = PetState()
-        self.save_manager = SaveManager(self)
-        self._has_save = self.load()
+        self.save_manager = SaveManager(self, save_path or DEFAULT_SAVE_PATH)
+        self._has_save = self.load() if autoload else False
+        self._autosave_timer = 0.0
 
+    # ------------------------------------------------------------------ time
     @property
     def has_save(self) -> bool:
-        """True when a valid previous save exists."""
         return self._has_save
 
-    def tick(self):
-        self.pet.tick()
-        self._grow_garden()
-        self._decay_home_decoration()
+    def decay_multipliers(self) -> dict:
+        mult = {}
+        loc = self.pet.location
+        if self.pet.home_decorated and loc == "home":
+            mult["happiness"] = 0.5
+        if loc == "backyard":
+            mature = sum(1 for p in self.pet.garden if p["stage"] >= MAX_STAGE)
+            mult["happiness"] = max(0.4, 1.0 - 0.08 * mature)
+        if loc == "arcade":
+            mult["energy"] = 1.3
+        return mult
 
-    def _grow_garden(self):
-        now = time.monotonic()
+    def tick(self, dt: float) -> None:
+        """Advance the simulation by dt seconds (call every frame)."""
+        if dt <= 0:
+            return
+        dt = min(dt, 5.0)  # a stall must not nuke the pet
+        self.pet.play_seconds += dt
+        self.pet.needs.tick(dt, self.decay_multipliers())
+        self._grow_garden(dt)
+        if self.pet.decoration_left > 0:
+            self.pet.decoration_left = max(0.0, self.pet.decoration_left - dt)
+        self._autosave_timer += dt
+        if self._autosave_timer >= AUTOSAVE_EVERY:
+            self._autosave_timer = 0.0
+            self.trigger_auto_save()
+
+    def apply_offline(self, seconds: float) -> None:
+        """Gentle catch-up for time spent with the game closed.
+
+        Decays at 15% speed, capped so a pet left for a week is hungry and
+        grumpy but never at zero. Plants keep growing.
+        """
+        if seconds <= 0:
+            return
+        seconds = min(seconds, 7 * 24 * 3600)
+        floors = {}
+        for n in NEED_NAMES:
+            floors[n] = min(getattr(self.pet.needs, n), 20.0)
+        self.pet.needs.tick(seconds * 0.15)
+        for n, floor in floors.items():
+            if getattr(self.pet.needs, n) < floor:
+                setattr(self.pet.needs, n, floor)
+        self._grow_garden(seconds)
+        self.pet.decoration_left = max(0.0, self.pet.decoration_left - seconds)
+
+    def _grow_garden(self, dt: float) -> None:
         for plant in self.pet.garden:
-            if plant.get("stage", 0) >= 3:
+            if plant["stage"] >= MAX_STAGE:
                 continue
-            planted_time = plant.get("planted_time", now)
-            time_since = now - planted_time
-            if time_since > 60 * (plant.get("stage", 0) + 1):
-                plant["stage"] = plant.get("stage", 0) + 1
+            plant["age"] = plant.get("age", 0.0) + dt
+            need = PLANTS[plant["type"]]["stage_secs"]
+            while plant["age"] >= need and plant["stage"] < MAX_STAGE:
+                plant["age"] -= need
+                plant["stage"] += 1
+            if plant["stage"] >= MAX_STAGE:
+                plant["age"] = 0.0
 
+    # ------------------------------------------------------------- queries
+    def mood(self) -> str:
+        avg = self.pet.needs.average()
+        low_name, low = self.pet.needs.lowest()
+        if avg >= 70 and low >= 35:
+            return "happy"
+        if avg >= 40 and low >= 15:
+            return "okay"
+        return "sad"
+
+    def wants(self) -> str | None:
+        """The need the pet is asking for, if any is getting low."""
+        name, value = self.pet.needs.lowest()
+        return name if value < 40 else None
+
+    def get_current_location_info(self) -> dict:
+        return LOCATIONS.get(self.pet.location, LOCATIONS["home"])
+
+    def mature_plants(self) -> int:
+        return sum(1 for p in self.pet.garden if p["stage"] >= MAX_STAGE)
+
+    def seed_count(self) -> int:
+        return sum(self.pet.inventory.get(PLANTS[p]["seed"], 0) for p in PLANTS)
+
+    # ------------------------------------------------------------- actions
     def change_location(self, new_location: str) -> bool:
-        """Change pet location. Returns True if the location changed."""
-        if new_location in self.LOCATIONS:
+        if new_location in LOCATIONS and new_location != self.pet.location:
             self.pet.location = new_location
             self.trigger_auto_save()
             return True
         return False
 
-    def get_current_location_info(self):
-        return self.LOCATIONS.get(self.pet.location, self.LOCATIONS["home"])
+    def can_perform(self, action: str) -> tuple[bool, str]:
+        if action not in CARE_ACTIONS:
+            return False, "Unknown action"
+        need, refusal, deltas = CARE_ACTIONS[action]
+        if getattr(self.pet.needs, need) >= FULL_THRESHOLD:
+            return False, refusal.format(name=self.pet.name)
+        if action == "play" and self.pet.needs.energy < 10:
+            return False, f"{self.pet.name} is too tired to play."
+        return True, ""
 
     def perform_care_action(self, action: str) -> dict:
-        location = self.pet.location
-        bonus_applied = None
-        extra = 0
+        ok, why = self.can_perform(action)
+        if not ok:
+            return {"success": False, "msg": why, "deltas": {}}
+        _, _, deltas = CARE_ACTIONS[action]
+        deltas = dict(deltas)
+        bonus = None
+        b = LOCATION_BONUS.get(self.pet.location)
+        if b and b[0] == action:
+            for k, v in b[1].items():
+                deltas[k] = deltas.get(k, 0) + v
+            bonus = b[2]
+        applied = self.pet.needs.apply(deltas)
+        self.pet.care_count += 1
+        self.trigger_auto_save()
+        msg = bonus or {
+            "feed": f"Yum! {self.pet.name} loved that.",
+            "play": f"{self.pet.name} had a blast!",
+            "clean": f"{self.pet.name} is all sparkly.",
+            "rest": f"{self.pet.name} feels refreshed.",
+        }[action]
+        return {"success": True, "msg": msg, "deltas": applied, "bonus": bonus,
+                "extra": 10 if bonus else 0}
 
-        success = self.pet.apply_action(action)
-        if not success:
-            return {"success": False}
-
-        if action == "play" and location == "park":
-            self.pet.needs.happiness = min(100.0, self.pet.needs.happiness + 10)
-            bonus_applied = "Play in the Park"
-            extra = 10
-        elif action == "rest" and location == "home":
-            self.pet.needs.energy = min(100.0, self.pet.needs.energy + 10)
-            bonus_applied = "Resting at Home"
-            extra = 10
-
-        result = {"success": True, "bonus": bonus_applied, "extra": extra}
-        # Auto-save on successful care action.
-        if result["success"]:
-            self.trigger_auto_save()
-        return result
-
-    def earn_coins(self, amount: int):
-        self.pet.coins = min(99999, self.pet.coins + amount)
+    def earn_coins(self, amount: int) -> None:
+        self.pet.coins = max(0, min(99999, self.pet.coins + int(amount)))
 
     def spend_coins(self, amount: int) -> bool:
-        if self.pet.coins >= amount:
-            self.pet.coins -= amount
-            return True
-        return False
+        if amount < 0 or self.pet.coins < amount:
+            return False
+        self.pet.coins -= amount
+        return True
 
     def buy_item(self, shop_key: str, item_key: str) -> dict:
-        loc_data = self.LOCATIONS.get(shop_key, {})
-        items = loc_data.get("items", [])
-        item = next((i for i in items if i["key"] == item_key), None)
-
+        item = next((i for i in world.shop_items(shop_key) if i["key"] == item_key), None)
         if not item:
             return {"success": False, "msg": "Item not found"}
-
+        if self.pet.location != shop_key:
+            return {"success": False, "msg": "You need to be in the shop"}
+        if item.get("eat") and self.pet.needs.hunger >= FULL_THRESHOLD:
+            return {"success": False, "msg": f"{self.pet.name} is too full for sweets."}
         if not self.spend_coins(item["price"]):
-            return {"success": False, "msg": "Not enough coins!"}
-
-        effect = item.get("effect", {})
-        for stat, val in effect.items():
-            if hasattr(self.pet.needs, stat):
-                current = getattr(self.pet.needs, stat)
-                setattr(self.pet.needs, stat, min(100.0, current + val))
-
-        if "seeds" in item_key:
+            return {"success": False, "msg": f"Not enough coins! ({item['price']} needed)"}
+        applied = self.pet.needs.apply(item.get("effect", {}))
+        if not item.get("eat"):
             self.pet.inventory[item_key] = self.pet.inventory.get(item_key, 0) + 1
-
-        return {"success": True, "msg": f"Bought {item['name']}!", "effect": effect}
+        self.trigger_auto_save()
+        verb = "Ate" if item.get("eat") else "Bought"
+        return {"success": True, "msg": f"{verb} {item['name']}!", "deltas": applied,
+                "effect": item.get("effect", {}), "eat": bool(item.get("eat"))}
 
     def plant_seed(self, seed_type: str) -> dict:
-        if len(self.pet.garden) >= 8:
-            return {"success": False, "msg": "Garden is full (max 8 plants)"}
-
+        if self.pet.location != "backyard":
+            return {"success": False, "msg": "Plant seeds in the Backyard"}
+        if seed_type not in SEED_TO_PLANT:
+            return {"success": False, "msg": "That's not a seed"}
+        if len(self.pet.garden) >= GARDEN_SLOTS:
+            return {"success": False, "msg": f"Garden is full ({GARDEN_SLOTS} plants)"}
         if self.pet.inventory.get(seed_type, 0) <= 0:
-            return {"success": False, "msg": "No seeds left!"}
-
+            return {"success": False, "msg": "No seeds left! Visit Gen's Garden."}
         self.pet.inventory[seed_type] -= 1
         if self.pet.inventory[seed_type] <= 0:
             self.pet.inventory.pop(seed_type, None)
-
-        plant_type = "flower" if seed_type == "flower_seeds" else "sunflower"
-        self.pet.garden.append({
-            "type": plant_type,
-            "stage": 0,
-            "planted_time": time.monotonic()
-        })
-
-        bonus = 45 if plant_type == "flower" else 60
-        self.pet.needs.happiness = min(100.0, self.pet.needs.happiness + bonus)
-
-        return {"success": True, "msg": f"Planted! +{bonus} Happiness", "bonus": bonus}
-
-    def get_garden_bonus(self) -> float:
-        if self.pet.location != "backyard":
-            return 0.0
-        mature = sum(1 for p in self.pet.garden if p.get("stage", 0) >= 3)
-        return min(0.8, mature * 0.1)
+        ptype = SEED_TO_PLANT[seed_type]
+        self.pet.garden.append({"type": ptype, "stage": 0, "age": 0.0})
+        applied = self.pet.needs.apply({"happiness": 5})
+        self.trigger_auto_save()
+        return {"success": True, "msg": f"Planted a {ptype}!", "deltas": applied}
 
     def harvest_plant(self) -> dict:
-        """Harvest one mature plant. Returns success + message."""
-        mature_plants = [p for p in self.pet.garden if p.get("stage", 0) >= 3]
-
-        if not mature_plants:
-            return {"success": False, "msg": "No mature plants to harvest"}
-
-        # Harvest the first mature plant
-        plant = mature_plants[0]
-        self.pet.garden.remove(plant)
-
-        # Add to flowers inventory
-        self.pet.inventory["flowers"] = self.pet.inventory.get("flowers", 0) + 1
-
-        return {"success": True, "msg": "Harvested 1 flower!"}
+        for plant in self.pet.garden:
+            if plant["stage"] >= MAX_STAGE:
+                self.pet.garden.remove(plant)
+                info = PLANTS[plant["type"]]
+                self.pet.inventory["flowers"] = self.pet.inventory.get("flowers", 0) + 1
+                self.earn_coins(info["coins"])
+                applied = self.pet.needs.apply({"happiness": info["happiness"]})
+                self.trigger_auto_save()
+                return {"success": True, "deltas": applied, "coins": info["coins"],
+                        "msg": f"Harvested a {plant['type']}! +{info['coins']} coins"}
+        return {"success": False, "msg": "Nothing is ready to harvest yet"}
 
     def decorate_home(self) -> dict:
-        """Decorate home with flowers. Costs 5 flowers."""
         if self.pet.location != "home":
             return {"success": False, "msg": "You can only decorate at home"}
-
-        if self.pet.inventory.get("flowers", 0) < 5:
-            return {"success": False, "msg": "You need at least 5 flowers to decorate"}
-
-        self.pet.inventory["flowers"] -= 5
+        have = self.pet.inventory.get("flowers", 0)
+        if have < FLOWERS_TO_DECORATE:
+            return {"success": False,
+                    "msg": f"Need {FLOWERS_TO_DECORATE} flowers to decorate (have {have})"}
+        self.pet.inventory["flowers"] = have - FLOWERS_TO_DECORATE
         if self.pet.inventory["flowers"] <= 0:
             self.pet.inventory.pop("flowers", None)
-
-        self.pet.home_decorated = True
-        self.pet.home_decoration_time = time.monotonic()
+        self.pet.decoration_left = float(DECORATION_SECS)
+        applied = self.pet.needs.apply({"happiness": 20})
         self.trigger_auto_save()
-        return {"success": True, "msg": "Home decorated with flowers!"}
+        return {"success": True, "msg": "Home decorated with flowers!", "deltas": applied}
 
-    def _decay_home_decoration(self):
-        if not self.pet.home_decorated:
-            return
+    def finish_minigame(self, game: str, score: int) -> dict:
+        reward = minigame_reward(game, score)
+        new_best = self.save_manager.update_high_score(game, score)
+        applied = self.pet.needs.apply({"happiness": reward["happiness"],
+                                        "energy": reward["energy"]})
+        self.earn_coins(reward["coins"])
+        self.save()
+        return {"success": True, "coins": reward["coins"], "deltas": applied,
+                "new_best": new_best, "best": self.save_manager.get_high_score(game)}
 
-        # Decoration lasts ~30 real minutes (you can change this number)
-        decay_time = 30 * 60   # seconds
-
-        if time.monotonic() - self.pet.home_decoration_time > decay_time:
-            self.pet.home_decorated = False
-            self.pet.home_decoration_time = 0.0
-
-    def save(self):
-        """Delegate to SaveManager. Returns True if a save was written."""
-        return self.save_manager.save()
+    # ----------------------------------------------------------- persistence
+    def save(self) -> bool:
+        return self.save_manager.save(force=True)
 
     def trigger_auto_save(self) -> bool:
-        """Convenience: trigger an auto-save if cooldown allows.
-        Returns True if a save was actually written, False if throttled."""
-        return self.save_manager.trigger_auto_save()
+        return self.save_manager.save(force=False)
 
     def load(self) -> bool:
-        """Load from SaveManager. Returns True if a valid save was found."""
         return self.save_manager.load()
 
-    def reset(self):
-        """Reset all game state and delete save file."""
+    def new_game(self, name: str, species_id: int) -> None:
+        self.pet = PetState(name=name, species_id=species_id)
+        self._has_save = True
+        self.save()
+
+    def reset(self) -> None:
         self.pet = PetState()
         self.save_manager.high_scores.clear()
         self._has_save = False
-        save_dir = os.path.dirname(self.SAVE_PATH)
-        save_path = self.SAVE_PATH
-        if os.path.exists(save_path):
-            os.remove(save_path)
+        self.save_manager.delete()

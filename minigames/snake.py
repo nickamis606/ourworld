@@ -6,9 +6,8 @@ OurWorld Arcade - Snake (final clean version)
 """
 
 import pygame
-from engine.assets import font as _font
+from minigames.base import MinigameBase
 import random
-from dataclasses import dataclass
 
 GRID_COLS = 32
 GRID_ROWS = 24
@@ -28,45 +27,9 @@ TEXT_COLOR = (240, 245, 250)
 ACCENT = (255, 200, 80)
 
 
-@dataclass
-class MinigameResult:
-    score: int
-    completed: bool
-    message: str = ""
-
-
-class MinigameBase:
-    def __init__(self, screen, clock):
-        self.screen = screen
-        self.clock = clock
-        self.running = True
-        self.score = 0
-        self.font = _font(31)
-        self.big_font = _font(62, True)
-        self.small_font = _font(23)
-
-    def handle_key(self, key): pass
-    def update(self, dt): pass
-    def draw(self, screen=None): pass
-
-    def run(self):
-        while self.running:
-            dt = self.clock.tick(FPS) / 1000.0
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                    return MinigameResult(self.score, False, "quit")
-                if event.type == pygame.KEYDOWN:
-                    self.handle_key(event.key)
-            self.update(dt)
-            self.draw()
-            pygame.display.flip()
-        return MinigameResult(self.score, True)
-
-
 class SnakeGame(MinigameBase):
     def __init__(self, screen, clock):
-        super().__init__(screen, clock)
+        super().__init__(screen, clock, (31, 62, 23))
         self.reset_game()
         self.last_move_time = 0
         self.move_interval = MOVE_INTERVAL_MS

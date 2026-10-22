@@ -9,9 +9,8 @@ centered level banner, level-transition pause, and clear restart path.
 
 import math
 import pygame
-from engine.assets import font as _font
+from minigames.base import MinigameBase
 import random
-from dataclasses import dataclass
 
 SCREEN_WIDTH = 640
 SCREEN_HEIGHT = 480
@@ -53,45 +52,9 @@ LEVEL_TRANSITION_MS = 1800
 FROG_RESET_MS = 300
 
 
-@dataclass
-class MinigameResult:
-    score: int
-    completed: bool
-    message: str = ""
-
-
-class MinigameBase:
-    def __init__(self, screen, clock):
-        self.screen = screen
-        self.clock = clock
-        self.running = True
-        self.score = 0
-        self.font = _font(31)
-        self.big_font = _font(47, True)
-        self.small_font = _font(20)
-
-    def handle_key(self, key): pass
-    def update(self, dt): pass
-    def draw(self, screen=None): pass
-
-    def run(self):
-        while self.running:
-            dt = self.clock.tick(30) / 1000.0
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                    return MinigameResult(self.score, False, "quit")
-                if event.type == pygame.KEYDOWN:
-                    self.handle_key(event.key)
-            self.update(dt)
-            self.draw()
-            pygame.display.flip()
-        return MinigameResult(self.score, True)
-
-
 class FroggerGame(MinigameBase):
     def __init__(self, screen, clock):
-        super().__init__(screen, clock)
+        super().__init__(screen, clock, (31, 47, 20))
         self.reset_game()
 
     # ------------------------------------------------------------------

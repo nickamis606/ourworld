@@ -5,9 +5,8 @@ Better visuals + noticeably progressive difficulty.
 """
 
 import pygame
-from engine.assets import font as _font
+from minigames.base import MinigameBase
 import random
-from dataclasses import dataclass
 
 SCREEN_WIDTH = 640
 SCREEN_HEIGHT = 480
@@ -27,47 +26,9 @@ OBSTACLE = (101, 67, 33)
 TREAT = (255, 200, 50)
 
 
-@dataclass
-class MinigameResult:
-    score: int
-    completed: bool
-    message: str = ""
-
-
-class MinigameBase:
-    def __init__(self, screen, clock):
-        self.screen = screen
-        self.clock = clock
-        self.running = True
-        self.score = 0
-        self.font = _font(34)
-        self.big_font = _font(62, True)
-        self.small_font = _font(23)
-
-    def handle_key(self, key): pass
-    def update(self, dt): pass
-    def draw(self, screen=None): pass
-
-    def run(self):
-        while self.running:
-            dt = self.clock.tick(FPS) / 1000.0
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                    return MinigameResult(self.score, False, "quit")
-                if event.type == pygame.KEYDOWN:
-                    self.handle_key(event.key)
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    self.handle_key(pygame.K_SPACE)
-            self.update(dt)
-            self.draw()
-            pygame.display.flip()
-        return MinigameResult(self.score, True)
-
-
 class PetDash(MinigameBase):
     def __init__(self, screen, clock, pet_color=None):
-        super().__init__(screen, clock)
+        super().__init__(screen, clock, (34, 62, 23))
         self.pet_color = pet_color or (80, 200, 120)
         self.reset_game()
 
